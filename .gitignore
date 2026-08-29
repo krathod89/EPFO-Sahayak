@@ -1,3 +1,24 @@
 # This repo's GitHub scope is specs, designs, and implementation only.
 # Outreach/marketing copy stays local + in the Obsidian vault, not on GitHub.
 Volunteer Recruitment/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# Env files — never commit real credentials (see .env.example for the required shape)
+.env
+.env.local
+.env.*.local
+
+# Prisma
+prisma/*.db
+prisma/migrations/dev.db*
+
+# Editor/OS noise
+.DS_Store
+
