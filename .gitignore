@@ -22,3 +22,5 @@ prisma/migrations/dev.db*
 # Editor/OS noise
 .DS_Store
 
+# Vercel CLI's local project link metadata (added automatically by `vercel link`)
+.vercel

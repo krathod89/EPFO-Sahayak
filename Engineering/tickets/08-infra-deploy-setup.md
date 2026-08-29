@@ -1,6 +1,11 @@
 # 08 — Infra: Mixpanel token + Vercel provisioning, preview environments
 
-**Status:** In progress. Supabase project created (`kffiffobopchaekrvpvu`) — **not used by the MVP** (ADR 0004 moved analytics to Mixpanel; Supabase stays reserved, unused, for v2). Mixpanel project created (project `4058729`), project token retrieved and verified locally (`MIXPANEL_TOKEN`/`NEXT_PUBLIC_MIXPANEL_TOKEN` in local `.env`, gitignored — a live test event confirmed the token works). **Still needed:** a Vercel project, the same env vars set there, and a deployed end-to-end check.
+**Status:** Done. Supabase project created (`kffiffobopchaekrvpvu`) — **not used by the MVP** (ADR 0004 moved analytics to Mixpanel; Supabase stays reserved, unused, for v2). Vercel project `rv-n/epfo-sahayak` created, linked to `github.com/krathod89/EPFO-Sahayak` (GitHub connected automatically on project creation — pushes now trigger preview builds, merges to `main` trigger production). `MIXPANEL_TOKEN` (Secret) and `NEXT_PUBLIC_MIXPANEL_TOKEN` (Config — intentionally public, see ADR 0004) set for both Production and Preview. First production deploy succeeded from the `backend-scaffold` branch's local files, live at **https://epfo-sahayak-pi.vercel.app**.
+
+**Deployed end-to-end verification (2026-08-30):**
+- `POST /api/diagnose` (`pre_filing`) → 200, correct `{"outcome":"ready",...}` response.
+- `POST /api/diagnose` (`post_rejection`, Code 2) → 200, correct diagnosis + a `MISSED` deadline (26 days late) + a Variant A grievance with the 12%-penalty citation appended — matches Rule Engine Spec exactly.
+- Analytics: the underlying `MIXPANEL_TOKEN` was confirmed live in a prior session (a `backend_wiring_verified` test event sent with no error). These two deployed calls fire `self_check_submitted`/`readiness_result_shown` and `codes_selected`/`diagnosis_shown`/`deadline_check_shown`/`grievance_generated` respectively — worth a spot-check in Mixpanel's Live View for session IDs starting `verify-` to see them land, but not blocking given the token path is already proven.
 
 Traces to: route prerequisites 5–6 (deploy target decided, PR preview environment actually works, local + prod verification methods agreed).
 
@@ -12,6 +17,7 @@ Traces to: route prerequisites 5–6 (deploy target decided, PR preview environm
 - Optional, not blocking: basic rate limiting or a request-size cap on `/api/diagnose` (it's open, no auth) before any public/real-user traffic (flagged in ADR 0002).
 
 ## Done means
-- A PR preview URL that actually responds on `/api/diagnose`.
-- `MIXPANEL_TOKEN` (and `NEXT_PUBLIC_MIXPANEL_TOKEN`, once the frontend needs it) set in both Preview and Production Vercel environments.
-- One event visible in Mixpanel's Live View after hitting the deployed `/api/diagnose` — the prod verification step from the route (step 10), not just a local check.
+- [x] `MIXPANEL_TOKEN` (Secret) and `NEXT_PUBLIC_MIXPANEL_TOKEN` (Config) set in both Preview and Production Vercel environments.
+- [x] A deployed URL that actually responds correctly on `/api/diagnose`, both entry points — confirmed via the manual production deploy above (https://epfo-sahayak-pi.vercel.app), which deploys directly from local files via the Vercel CLI rather than from a GitHub push.
+- [ ] **Not yet confirmed:** whether PR #1 itself now gets an automatic preview build. Git was connected to the Vercel project *after* `backend-scaffold` was already pushed, so it's unverified whether Vercel back-fills a preview for an already-open PR or only starts on the next push to that branch. Push any small follow-up commit to `backend-scaffold` and check the PR's checks tab to confirm before relying on this for future PRs.
+- [ ] One event visible in Mixpanel's Live View for a session ID starting `verify-` (spot-check only — the token path itself is already proven working, see above).
