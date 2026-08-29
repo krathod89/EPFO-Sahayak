@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const createMock = vi.fn();
-vi.mock("@/lib/db", () => ({
-  prisma: { analyticsEvent: { create: (...args: unknown[]) => createMock(...args) } },
+const trackMock = vi.fn();
+vi.mock("@/lib/analytics", () => ({
+  trackServerEvent: (...args: unknown[]) => trackMock(...args),
 }));
 
 import { POST } from "./route";
@@ -16,8 +16,7 @@ function jsonRequest(body: unknown): Request {
 }
 
 beforeEach(() => {
-  createMock.mockReset();
-  createMock.mockResolvedValue({ id: "evt-1" });
+  trackMock.mockReset();
 });
 
 describe("POST /api/diagnose — post_rejection", () => {
@@ -54,13 +53,15 @@ describe("POST /api/diagnose — post_rejection", () => {
         session_id: "sess-1",
       })
     );
-    const eventTypes = createMock.mock.calls.map((call) => call[0].data.eventType);
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
     expect(eventTypes).toEqual(
       expect.arrayContaining(["codes_selected", "diagnosis_shown", "deadline_check_shown", "grievance_generated"])
     );
   });
 
-  it("logs nothing when no session_id is present, but still returns the diagnosis", async () => {
+  it("still returns the diagnosis when no session_id is present", async () => {
+    // trackServerEvent's own no-op-without-a-sessionId behavior is unit-tested in
+    // lib/analytics.test.ts — this only confirms the route doesn't depend on it being called.
     const res = await POST(
       jsonRequest({
         entry_point: "post_rejection",
@@ -71,7 +72,6 @@ describe("POST /api/diagnose — post_rejection", () => {
       })
     );
     expect(res.status).toBe(200);
-    expect(createMock).not.toHaveBeenCalled();
   });
 
   it("rejects a request missing a required conditional field (Code 1 without namedob_kyc_page_status)", async () => {
@@ -129,7 +129,7 @@ describe("POST /api/diagnose — pre_filing", () => {
     expect(body.outcome).toBe("ready");
     expect(body).not.toHaveProperty("deadline"); // no deadline check in this flow
 
-    const eventTypes = createMock.mock.calls.map((call) => call[0].data.eventType);
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
     expect(eventTypes).toEqual(
       expect.arrayContaining(["self_check_submitted", "readiness_result_shown"])
     );

@@ -1,16 +1,17 @@
-# 07 — Database schema + POST /api/events
+# 07 — Server-side analytics tracking (Mixpanel)
 
-**Status:** Code complete, unit/integration-tested against a mocked Prisma client — **the live migration has not run** (needs a real `DATABASE_URL`, which is ticket 08's job to provision). Do not treat this as fully done until that migration succeeds against Supabase.
+**Status:** Done (this session) — unit-tested against a mocked Mixpanel client; not yet exercised against a real Mixpanel project (needs a real `MIXPANEL_TOKEN`, ticket 08).
 
-Traces to: `spec.md` US6. See `Engineering/ADR/0002-stateless-mvp-no-auth.md` for why this is the only table.
+Traces to: `spec.md` US6. See `Engineering/ADR/0004-analytics-via-mixpanel.md` for why this is Mixpanel, not a database, and `Engineering/ADR/0002-stateless-mvp-no-auth.md` for the PII rule this carries forward.
+
+*Originally scoped around a Postgres `AnalyticsEvent` table and a `POST /api/events` endpoint — both existed briefly this session before the product owner's Mixpanel project made that redundant. This ticket describes the current, Mixpanel-based state; the old approach is preserved only in ADR 0004's "alternatives considered."*
 
 ## Scope
-- `prisma/schema.prisma` — `AnalyticsEvent` model: `id` (uuid, pk), `sessionId` (string, indexed), `eventType` (string, indexed), `properties` (Json), `createdAt` (timestamp, default now, indexed). Postgres provider, `DATABASE_URL` from env.
-- `lib/db.ts` — a singleton `PrismaClient`, guarded against creating a new client per serverless invocation in dev (the standard Next.js + Prisma pattern).
-- `app/api/events/route.ts` — validates `{ session_id, event_type, properties }`, writes one row, returns 201. Also **rejects** (400, not silently strips) any event whose `properties` contains a key shaped like a citizen-entered field (`uan`, `claim_id`, `filing_date`, etc. — see `lib/rule-engine/schema.ts`'s `BLOCKED_PROPERTY_KEYS`) — a server-side backstop for ADR 0002's PII rule, not just caller discipline. No auth, no rate limiting yet (tracked in ticket 08).
-- Client-only events (`session_started`, `entry_point_selected`, `codes_selected` pre-submit interactions, `grievance_copied`, `feedback_submitted`) call this endpoint directly from the frontend the product owner is building; server-computed events (`diagnosis_shown`, etc.) are fired from ticket 06's route handler using the same `lib/db.ts` client, not a second HTTP round-trip to this endpoint.
+- `lib/analytics.ts` — `trackServerEvent(sessionId, eventType, properties)`. Uses the official `mixpanel` (mixpanel-node) package, `MIXPANEL_TOKEN` from env, `session_id` as `distinct_id`. Falls back to a silent no-op when no token is configured (so local dev without Mixpanel wired up never breaks). Drops (does not silently strip) any event whose `properties` contains a key shaped like a citizen-entered field — the same `BLOCKED_PROPERTY_KEYS` list the old `/api/events` schema used to check.
+- Server-computed events (`codes_selected`, `self_check_submitted`, `diagnosis_shown`, `deadline_check_shown`, `grievance_generated`, `readiness_result_shown`) are fired from `app/api/diagnose/route.ts` directly, using this module — instrumented in the same ticket that built the diagnose flow (ticket 06), not deferred.
+- Client-fired events (`session_started`, `entry_point_selected`, `grievance_copied`, `feedback_submitted`) are **not this ticket's scope** — they're sent directly from the browser via Mixpanel's client SDK once the frontend exists, using `NEXT_PUBLIC_MIXPANEL_TOKEN`. No backend code needed for those.
 
 ## Done means
-- [x] Integration test: POST a valid event, confirm one row lands with the right shape; POST a malformed body, confirm 400 and no row written. See `app/api/events/route.test.ts`.
-- [x] Confirm `properties` carrying an excluded field (UAN, claim ID, filing date) is rejected outright, not just documented — covered by both a schema unit test and a route integration test.
-- [ ] **A local migration (`prisma migrate dev`) runs clean against a real Supabase dev database.** Not yet done — blocked on ticket 08 provisioning a real `DATABASE_URL`. `npx prisma generate` and `tsc --noEmit` both succeed against the schema as written, which confirms the schema itself is valid, but that is not the same as a verified migration.
+- [x] Unit tests covering: no-op when `sessionId` is absent, a real track call using `sessionId` as `distinct_id`, the blocked-key drop, and that the underlying client throwing never propagates. See `lib/analytics.test.ts`.
+- [x] Integration coverage via `app/api/diagnose/route.test.ts` (mocks `trackServerEvent`, asserts the right event types fire).
+- [ ] **Confirmed against a real Mixpanel project** — an event fired from a deployed `/api/diagnose` call actually shows up in the Mixpanel Live View / Events report. Not yet done — blocked on ticket 08 (needs a real `MIXPANEL_TOKEN` in a deployed environment).

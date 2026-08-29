@@ -10,14 +10,14 @@
 
 ## Stack decision
 
-Confirmed with the product owner (2026-08-29):
+Confirmed with the product owner (2026-08-29, analytics backend revised same day once a Mixpanel project existed too):
 
-- **One Next.js app** (App Router, TypeScript) — holds both the API routes below and, later, the UI the product owner is designing separately.
-- **Database:** Supabase Postgres (free tier), accessed via Prisma.
+- **One Next.js app** (App Router, TypeScript) — holds both the API route below and, later, the UI the product owner is designing separately.
+- **Analytics:** Mixpanel (client SDK for client-fired events, the `mixpanel` server package for server-computed events). **No database** — the Supabase project the product owner also created is kept, unused by the MVP, reserved for a v2 feature (PRD §7a item 8).
 - **Tests:** Vitest.
 - **Deploy target:** Vercel (matches the Next.js choice, zero-config preview environments per PR).
 
-Full rationale in `Engineering/ADR/0001-tech-stack-and-hosting.md`.
+Full rationale in `Engineering/ADR/0001-tech-stack-and-hosting.md` and `Engineering/ADR/0004-analytics-via-mixpanel.md`.
 
 ---
 
@@ -57,9 +57,8 @@ As the product owner, I want usage and feedback tracked per anonymous session (n
 
 ## API surface
 
-Two endpoints cover the whole rule engine (it already shares logic across both entry points — see Rule Engine Spec §1):
+One endpoint covers the whole rule engine (it already shares logic across both entry points — see Rule Engine Spec §1):
 
-- **`POST /api/diagnose`** — body carries `entry_point: "post_rejection" | "pre_filing"` plus the fields Rule Engine Spec §2 lists as required for that entry point. Returns the diagnosis, priority order (if applicable), deadline/penalty result (post-rejection only), and grievance text (post-rejection only) or the readiness result (pre-filing only).
-- **`POST /api/events`** — body carries `session_id`, `event_type`, `properties`. Writes one row to the `AnalyticsEvent` table. Fire-and-forget from the frontend; never blocks the diagnose flow.
+- **`POST /api/diagnose`** — body carries `entry_point: "post_rejection" | "pre_filing"` plus the fields Rule Engine Spec §2 lists as required for that entry point, and an optional `session_id` used only to tag the server-computed analytics events this call fires (see `analytics.md`). Returns the diagnosis, priority order (if applicable), deadline/penalty result (post-rejection only), and grievance text (post-rejection only) or the readiness result (pre-filing only).
 
-Both are stateless request/response — no session state kept server-side beyond the analytics log itself.
+There is no separate analytics endpoint. Client-fired events go straight to Mixpanel from the browser via its client SDK (ADR 0004) — never through this backend. The endpoint above is stateless request/response; analytics tracking inside it is fire-and-forget and never blocks the response.

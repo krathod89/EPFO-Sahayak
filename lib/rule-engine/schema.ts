@@ -95,39 +95,3 @@ export function validatePostRejectionCrossFields(data: PostRejectionRequest): st
 
   return errors;
 }
-
-// Server-side backstop for the PII rule in Engineering/analytics.md ("Not tracked, on
-// purpose") and ADR 0002: reject, don't silently strip, any event whose properties carry a
-// key shaped like a citizen-entered field. Caller discipline (never sending these in the
-// first place) is the primary defense; this catches a regression there loudly instead of
-// letting bad data land quietly.
-const BLOCKED_PROPERTY_KEYS = [
-  "uan",
-  "claim_id",
-  "claimId",
-  "filing_date",
-  "filingDate",
-  "bank_kyc_submission_date",
-  "bankKycSubmissionDate",
-  "self_check_answers",
-  "selfCheckAnswers",
-];
-
-export const eventRequestSchema = z
-  .object({
-    session_id: z.string().min(1),
-    event_type: z.string().min(1),
-    properties: z.record(z.unknown()).optional(),
-  })
-  .superRefine((data, ctx) => {
-    const foundBlocked = Object.keys(data.properties ?? {}).filter((key) =>
-      BLOCKED_PROPERTY_KEYS.includes(key)
-    );
-    if (foundBlocked.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `properties must not contain citizen-entered fields: ${foundBlocked.join(", ")}`,
-        path: ["properties"],
-      });
-    }
-  });

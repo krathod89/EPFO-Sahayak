@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diagnoseRequestSchema, eventRequestSchema, validatePostRejectionCrossFields } from "./schema";
+import { diagnoseRequestSchema, validatePostRejectionCrossFields } from "./schema";
 
 describe("diagnoseRequestSchema", () => {
   it("accepts a minimal valid pre_filing request", () => {
@@ -89,17 +89,5 @@ describe("validatePostRejectionCrossFields", () => {
       rejection_codes_selected: ["CODE_2_DOE", "CODE_2_DOE"],
     });
     expect(errors.some((e) => e.includes("duplicate"))).toBe(true);
-  });
-});
-
-describe("eventRequestSchema", () => {
-  it("accepts a minimal valid event", () => {
-    const result = eventRequestSchema.safeParse({ session_id: "abc-123", event_type: "session_started" });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects an event missing session_id", () => {
-    const result = eventRequestSchema.safeParse({ event_type: "session_started" });
-    expect(result.success).toBe(false);
   });
 });
