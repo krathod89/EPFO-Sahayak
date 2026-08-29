@@ -1,6 +1,6 @@
 # 07 — Server-side analytics tracking (Mixpanel)
 
-**Status:** Done (this session) — unit-tested against a mocked Mixpanel client; not yet exercised against a real Mixpanel project (needs a real `MIXPANEL_TOKEN`, ticket 08).
+**Status:** Done — unit-tested against a mocked Mixpanel client, and confirmed against the real Mixpanel project (a live `backend_wiring_verified` test event, sent via the real `MIXPANEL_TOKEN`, completed with no error from `mixpanel-node`'s callback — check Mixpanel's Live View to see it land).
 
 Traces to: `spec.md` US6. See `Engineering/ADR/0004-analytics-via-mixpanel.md` for why this is Mixpanel, not a database, and `Engineering/ADR/0002-stateless-mvp-no-auth.md` for the PII rule this carries forward.
 
@@ -14,4 +14,4 @@ Traces to: `spec.md` US6. See `Engineering/ADR/0004-analytics-via-mixpanel.md` f
 ## Done means
 - [x] Unit tests covering: no-op when `sessionId` is absent, a real track call using `sessionId` as `distinct_id`, the blocked-key drop, and that the underlying client throwing never propagates. See `lib/analytics.test.ts`.
 - [x] Integration coverage via `app/api/diagnose/route.test.ts` (mocks `trackServerEvent`, asserts the right event types fire).
-- [ ] **Confirmed against a real Mixpanel project** — an event fired from a deployed `/api/diagnose` call actually shows up in the Mixpanel Live View / Events report. Not yet done — blocked on ticket 08 (needs a real `MIXPANEL_TOKEN` in a deployed environment).
+- [x] **Confirmed against the real Mixpanel project** — a test event (`backend_wiring_verified`) sent with the real project token via `mixpanel-node` completed with no error. This verified the token and the tracking call shape; it was sent from a local script using the same code path as `lib/analytics.ts`, not yet from a deployed `/api/diagnose` call — that end-to-end deployed check is still ticket 08's job.

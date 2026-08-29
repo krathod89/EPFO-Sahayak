@@ -1,6 +1,6 @@
 # 08 — Infra: Mixpanel token + Vercel provisioning, preview environments
 
-**Status:** In progress — owner: product owner (needs their own accounts/credentials, not something an agent session can do unattended). Supabase project created (`kffiffobopchaekrvpvu`) and Mixpanel project created (project `4058729`) — **Supabase is not used by the MVP** (ADR 0004 moved analytics to Mixpanel; Supabase stays reserved, unused, for v2). Mixpanel's project token still needs to be pulled and wired in as an env var.
+**Status:** In progress. Supabase project created (`kffiffobopchaekrvpvu`) — **not used by the MVP** (ADR 0004 moved analytics to Mixpanel; Supabase stays reserved, unused, for v2). Mixpanel project created (project `4058729`), project token retrieved and verified locally (`MIXPANEL_TOKEN`/`NEXT_PUBLIC_MIXPANEL_TOKEN` in local `.env`, gitignored — a live test event confirmed the token works). **Still needed:** a Vercel project, the same env vars set there, and a deployed end-to-end check.
 
 Traces to: route prerequisites 5–6 (deploy target decided, PR preview environment actually works, local + prod verification methods agreed).
 
