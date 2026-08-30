@@ -11,14 +11,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "lucide-react": "^1.37.0",
     "mixpanel": "^0.23.0",
+    "mixpanel-browser": "^2.82.1",
+    "motion": "^13.1.1",
     "next": "^14.2.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "tailwindcss": "^4.3.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/mixpanel": "^2.14.9",
+    "@types/mixpanel-browser": "^2.60.0",
     "@types/node": "^20.16.10",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",

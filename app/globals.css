@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Font faces are loaded via next/font/google in app/layout.tsx (not a hand-rolled
+   @import/<link> — next/font self-hosts and injects --font-fraunces/--font-inter as CSS
+   variables on <html>, which these theme tokens just point at). */
+@theme {
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+
+  --color-accent-50: #eef8f4;
+  --color-accent-100: #d3ede5;
+  --color-accent-200: #a6d9c9;
+  --color-accent-500: #0a6e52;
+  --color-accent-600: #085e45;
+  --color-accent-700: #064e38;
+
+  /* Cool-neutral ramp — hue-shifted from an earlier warm-cream palette to a cool
+     near-white, per the design review's background-color finding (GOV.UK/NHS-111/UX4G
+     all lean cool-neutral, not cream, for a trust-first government-adjacent tone). */
+  --color-warm-50: #f1f4f7;
+  --color-warm-100: #e4e8ec;
+  --color-warm-200: #d3d9de;
+  --color-warm-300: #b3bac1;
+  --color-warm-400: #98a0a8;
+  --color-warm-500: #757e87;
+  --color-warm-600: #4a525a;
+  --color-warm-700: #2f363c;
+  --color-warm-900: #101316;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-warm-50);
+  color: var(--color-warm-900);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.22s ease-out both;
+}
