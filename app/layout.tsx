@@ -1,13 +1,32 @@
+import { Fraunces, Inter } from "next/font/google";
+import "./globals.css";
+
+// Self-hosted via next/font (not a hand-rolled <link>/@import) — this repo's own
+// carried-forward lesson is to prefer framework-native font loading so what's declared
+// in CSS is guaranteed to be what actually renders.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-fraunces",
+  display: "swap",
+});
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
 export const metadata = {
   title: "EPFO Sahayak",
   description: "Decode your EPFO PF claim rejection and know what to do next.",
 };
 
-// Placeholder root layout. The product owner is designing the real UI separately —
-// this exists only so Next.js has a valid App Router root for the API routes to sit under.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${fraunces.variable} ${inter.variable}`}>
       <body>{children}</body>
     </html>
   );
