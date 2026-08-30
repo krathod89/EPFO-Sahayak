@@ -8,6 +8,12 @@
 
 **Assignment brief:** `Research/FINAL CASE STUDY C8.docx`. It is a 9-day build. Day 1 asks you to "pick your battlefield." Submission is due Sunday, 6 September.
 
+**Current build status (as of 2026-08-30, Day 3 of 9):** The MVP is built, tested, and live. Both entry points work: decode a rejection, or check readiness before filing. You can try it now at **[epfo-sahayak-pi.vercel.app](https://epfo-sahayak-pi.vercel.app)**. This is not the end of the case study. Two things are still open:
+- **No real citizen has used it yet.** H13 — the hypothesis that decides whether an auto-generated grievance actually helps — is still untested. Section 7c names the test plan. Section 7b's volunteer recruiting has not been posted yet.
+- **A few facts still need a primary-source check** before they are safe to cite as final: the 34% rejection-rate figure, the 3-day rule's exact eligibility conditions, and the bank-KYC wait-time thresholds. See Section 10.
+
+Read this PRD as **current, not finished.** The build is real and working. The proof that it helps a real citizen has not happened yet.
+
 ---
 
 ## Changelog
