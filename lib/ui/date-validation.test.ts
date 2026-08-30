@@ -32,4 +32,12 @@ describe("dateInputError", () => {
   it("rejects an unparseable string", () => {
     expect(dateInputError("not-a-date", TODAY)).toBe("That doesn't look like a valid date.");
   });
+
+  it("rejects an out-of-range month instead of silently rolling it over (e.g. month 13 -> next January)", () => {
+    expect(dateInputError("2026-13-05", TODAY)).toBe("That doesn't look like a valid date.");
+  });
+
+  it("rejects an out-of-range day instead of silently rolling it over (e.g. Feb 30 -> March 2)", () => {
+    expect(dateInputError("2026-02-30", TODAY)).toBe("That doesn't look like a valid date.");
+  });
 });

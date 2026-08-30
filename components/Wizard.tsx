@@ -633,14 +633,22 @@ function DeadlineCard({ deadline, filingDate, kycComplete }: { deadline: Deadlin
 
 function CopyBlock({ text, onCopy }: { text: string; onCopy?: () => void }) {
   const [copied, setCopied] = useState(false);
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   function copyText() {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      onCopy?.();
-      setTimeout(() => setCopied(false), 2500);
-    });
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyFailed(false);
+        setCopied(true);
+        onCopy?.();
+        setTimeout(() => setCopied(false), 2500);
+      },
+      () => {
+        // Permission denied, insecure context, or no Clipboard API at all — tell the
+        // citizen instead of failing silently, since they still need this text to file.
+        setCopyFailed(true);
+      }
+    );
   }
 
   return (
@@ -670,7 +678,12 @@ function CopyBlock({ text, onCopy }: { text: string; onCopy?: () => void }) {
           {copied ? "Copied to clipboard" : ""}
         </span>
       </div>
-      <pre ref={ref as unknown as React.RefObject<HTMLPreElement>} className="px-4 py-4 text-xs text-warm-700 leading-relaxed whitespace-pre-wrap font-sans overflow-auto max-h-64">
+      {copyFailed && (
+        <p role="alert" className="px-4 pt-3 text-xs text-red-700 leading-relaxed">
+          Couldn&apos;t copy automatically. Please select the text below and copy it by hand.
+        </p>
+      )}
+      <pre className="px-4 py-4 text-xs text-warm-700 leading-relaxed whitespace-pre-wrap font-sans overflow-auto max-h-64">
         {text}
       </pre>
     </motion.div>
@@ -696,6 +709,17 @@ export default function Wizard() {
   const [readinessApiResult, setReadinessApiResult] = useState<ReadinessResult | null>(null);
   const [apiPending, setApiPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // Each fetch effect below tracks its own "last input actually fetched" key and a
+  // monotonic request id. The key check skips re-fetching when nothing relevant changed
+  // (e.g. re-entering a screen); the request id lets a response that's been superseded by
+  // a newer request (the citizen kept typing) detect that and discard itself instead of
+  // clobbering fresher state — no in-flight fetch is ever cancelled, but a stale one always
+  // loses the race.
+  const postRejectionRequestIdRef = useRef(0);
+  const lastPostRejectionKeyRef = useRef<string | null>(null);
+  const readinessRequestIdRef = useRef(0);
+  const lastReadinessKeyRef = useRef<string | null>(null);
 
   // Offer to resume once, on first mount, if a prior session left off mid-flow.
   useEffect(() => {
@@ -754,15 +778,27 @@ export default function Wizard() {
     if (s.path !== "A") return;
     if (s.screen !== "diagnosisSummary" && s.screen !== "grievanceOutput") return;
     if (!s.filingDate || s.kycCompleteAtFiling === null) return;
-    if (apiPending) return;
 
+    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankKycSubmissionDate, s.selfCheckAnswers]);
+    if (key === lastPostRejectionKeyRef.current) return; // nothing this fetch depends on actually changed
+
+    const myRequestId = ++postRejectionRequestIdRef.current;
     const t = setTimeout(() => {
       setApiPending(true);
       setApiError(null);
       postDiagnose(buildPostRejectionInput(s.uan, s.claimId))
-        .then((result) => setPostRejectionResult(result))
-        .catch((err) => setApiError(err instanceof DiagnoseApiError ? err.message : "Something went wrong. Please try again."))
-        .finally(() => setApiPending(false));
+        .then((result) => {
+          if (postRejectionRequestIdRef.current !== myRequestId) return; // superseded by a newer keystroke
+          lastPostRejectionKeyRef.current = key;
+          setPostRejectionResult(result);
+        })
+        .catch((err) => {
+          if (postRejectionRequestIdRef.current !== myRequestId) return;
+          setApiError(err instanceof DiagnoseApiError ? err.message : "Something went wrong. Please try again.");
+        })
+        .finally(() => {
+          if (postRejectionRequestIdRef.current === myRequestId) setApiPending(false);
+        });
     }, s.screen === "grievanceOutput" ? 500 : 0); // debounce only the live-as-you-type refresh on grievanceOutput
 
     return () => clearTimeout(t);
@@ -771,9 +807,13 @@ export default function Wizard() {
 
   useEffect(() => {
     if (s.path !== "B") return;
-    if (s.screen !== "readinessResult" || readinessApiResult || apiPending) return;
+    if (s.screen !== "readinessResult") return;
     if (!isSelfCheckComplete(s.selfCheckAnswers)) return;
 
+    const key = JSON.stringify([s.uan, s.claimId, s.selfCheckAnswers]);
+    if (key === lastReadinessKeyRef.current) return; // nothing this fetch depends on actually changed (e.g. re-entering the screen unchanged)
+
+    const myRequestId = ++readinessRequestIdRef.current;
     setApiPending(true);
     setApiError(null);
     postDiagnose({
@@ -783,11 +823,20 @@ export default function Wizard() {
       claim_id: s.claimId || undefined,
       self_check_answers: s.selfCheckAnswers as SelfCheckAnswers,
     })
-      .then((result) => setReadinessApiResult(result))
-      .catch((err) => setApiError(err instanceof DiagnoseApiError ? err.message : "Something went wrong. Please try again."))
-      .finally(() => setApiPending(false));
+      .then((result) => {
+        if (readinessRequestIdRef.current !== myRequestId) return;
+        lastReadinessKeyRef.current = key;
+        setReadinessApiResult(result);
+      })
+      .catch((err) => {
+        if (readinessRequestIdRef.current !== myRequestId) return;
+        setApiError(err instanceof DiagnoseApiError ? err.message : "Something went wrong. Please try again.");
+      })
+      .finally(() => {
+        if (readinessRequestIdRef.current === myRequestId) setApiPending(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.screen]);
+  }, [s.screen, s.uan, s.claimId, s.selfCheckAnswers]);
 
   function advance() {
     const to = nextScreen(s.screen, s);
@@ -806,6 +855,8 @@ export default function Wizard() {
     setDirection(-1);
     setPostRejectionResult(null);
     setReadinessApiResult(null);
+    lastPostRejectionKeyRef.current = null;
+    lastReadinessKeyRef.current = null;
     setS(init);
   }
 

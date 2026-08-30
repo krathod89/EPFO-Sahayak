@@ -9,8 +9,22 @@
  * lib/rule-engine's own today_date parameters. */
 export function dateInputError(value: string | null, today: Date = new Date()): string | null {
   if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return "That doesn't look like a valid date.";
+  const [, yearStr, monthStr, dayStr] = match;
   const d = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return "That doesn't look like a valid date.";
+  // JS's Date parser doesn't reject an out-of-range component (e.g. month "13") — it
+  // silently rolls it over into a different, still-valid date instead of Invalid Date.
+  // Confirm the parsed date's own components match what was typed, not just that parsing
+  // "succeeded," so a rolled-over date (e.g. "2026-13-05" becoming 2027-01-05) is caught.
+  if (
+    Number.isNaN(d.getTime()) ||
+    d.getFullYear() !== Number(yearStr) ||
+    d.getMonth() + 1 !== Number(monthStr) ||
+    d.getDate() !== Number(dayStr)
+  ) {
+    return "That doesn't look like a valid date.";
+  }
   const todayMidnight = new Date(today);
   todayMidnight.setHours(0, 0, 0, 0);
   if (d.getTime() > todayMidnight.getTime()) return "This date is in the future — please check it.";
