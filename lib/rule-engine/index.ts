@@ -6,7 +6,7 @@
 import { CODE_DEFINITIONS } from "./codes";
 import { checkDeadline, type DeadlineResult } from "./deadline";
 import { diagnose, type DiagnoseResult, type DiagnosisEntry } from "./diagnose";
-import { buildGrievance, type GrievanceOutput } from "./grievance";
+import { buildGrievance, type GrievanceOutput, type StandardKind } from "./grievance";
 import { prioritize, type PriorityResult } from "./prioritize";
 import { readinessResult, type ReadinessResult } from "./readiness";
 import type { DiagnosableCode, PostRejectionInput, PreFilingInput, RuleCode } from "./types";
@@ -49,7 +49,7 @@ function kindForPrimaryCode(
   code: DiagnosableCode,
   diag: DiagnoseResult,
   input: PostRejectionInput
-): { type: "standard"; codeName: string; issueSentence: string } | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: string } | { type: "portal_sync_bug" } {
+): StandardKind | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: string } | { type: "portal_sync_bug" } {
   const entry = diag.entries.find((e) => e.code === code);
   if (!entry) throw new Error(`No diagnosis entry found for primary code ${code}`);
 
@@ -63,7 +63,7 @@ function kindForPrimaryCode(
       bank_kyc_submission_date: input.bank_kyc_submission_date!,
     };
   }
-  return { type: "standard", codeName: CODE_DEFINITIONS[code].name, issueSentence: firstSentence(entry.explanation) };
+  return { type: "standard", code, codeName: CODE_DEFINITIONS[code].name, issueSentence: firstSentence(entry.explanation) };
 }
 
 /** Grievance kind for an issue found via the self-check sub-flow (Code 7's fallback).
@@ -71,11 +71,9 @@ function kindForPrimaryCode(
  * since no submission date is collected in this context (spec Section 3 footnote), so
  * there's no band to justify Variant B's escalation text, and Variant A never covers Code 3
  * (spec Section 6 scopes it to Codes 1, 2, 4, 5 only). */
-function kindForSelfCheckIssue(
-  entry: DiagnosisEntry
-): { type: "standard"; codeName: string; issueSentence: string } | null {
+function kindForSelfCheckIssue(entry: DiagnosisEntry): StandardKind | null {
   if (entry.code === "CODE_3_BANK_KYC") return null;
-  return { type: "standard", codeName: CODE_DEFINITIONS[entry.code].name, issueSentence: firstSentence(entry.explanation) };
+  return { type: "standard", code: entry.code, codeName: CODE_DEFINITIONS[entry.code].name, issueSentence: firstSentence(entry.explanation) };
 }
 
 export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFlowResult {
@@ -171,5 +169,6 @@ export * from "./types";
 export type { DiagnosisEntry } from "./diagnose";
 export type { PriorityResult } from "./prioritize";
 export type { DeadlineResult, DeadlineStatus } from "./deadline";
-export type { GrievanceOutput, GrievanceVariant } from "./grievance";
+export type { GrievanceOutput, GrievanceVariant, SuggestedCategory } from "./grievance";
+export { SUGGESTED_CATEGORY_CAVEAT } from "./grievance";
 export type { ReadinessResult, ReadinessOutcome } from "./readiness";

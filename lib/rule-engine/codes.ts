@@ -61,6 +61,37 @@ export interface ExplanationAndFix {
   fix: string;
 }
 
+/** Broad EPFiGMS category names for the grievance-output "where to file" hint (ticket 14,
+ * 2026-08-31), confirmed only in prose by secondary sources (ClearTax, BankBazaar, IndMoney,
+ * Paytm, Jainam, Motilal Oswal, Bajaj Finserv, Canara HSBC) — not the exact dropdown values.
+ * EPFiGMS's real category/subcategory dropdown only renders after a citizen's own UAN + OTP
+ * login, which this project has no access to; no secondary source shows the authenticated
+ * form either. This stays a best-guess HINT, never a confirmed instruction — see
+ * `SUGGESTED_CATEGORY_CAVEAT` and `Rule Engine/Rule Engine Spec.md` §6/§9 gap 6. A Phase 2
+ * follow-up (PRD.md §10) replaces this with the exact captured mapping once a real volunteer
+ * reports back what they actually saw on the authenticated form. */
+export type SuggestedCategory = "PF Withdrawal" | "Pension Settlement";
+
+/** One entry per `RuleCode` (exhaustive, like `CODE_DEFINITIONS` above) — a future code added
+ * to `RuleCode` fails to type-check here until it's given a category too, same safety net
+ * `CODE_DEFINITIONS` already has. Every code defaults to "PF Withdrawal" (every code in this
+ * tool is about a Form 19/10C/31 withdrawal claim) except Code 4, EPS — literally the pension
+ * component, the one deliberate differentiation. */
+export const SUGGESTED_CATEGORY_BY_CODE: Record<RuleCode, SuggestedCategory> = {
+  CODE_1_NAME_DOB: "PF Withdrawal",
+  CODE_2_DOE: "PF Withdrawal",
+  CODE_3_BANK_KYC: "PF Withdrawal",
+  CODE_4_EPS: "Pension Settlement",
+  CODE_5_OLD_CLAIM: "PF Withdrawal",
+  CODE_6_APPROVED_NOT_CREDITED: "PF Withdrawal",
+  CODE_7_NO_REASON: "PF Withdrawal",
+};
+
+/** Caveat shown alongside `suggestedCategory` — must always accompany it; the hint is never
+ * presented as a confirmed instruction. */
+export const SUGGESTED_CATEGORY_CAVEAT =
+  "This is our best guess, not a confirmed EPFiGMS category — pick whichever option on the form looks closest.";
+
 /** Code 2, 4, 5, 6 — one explanation/fix each, no branching. */
 export const SIMPLE_CODE_COPY: Partial<Record<RuleCode, ExplanationAndFix>> = {
   CODE_2_DOE: {
