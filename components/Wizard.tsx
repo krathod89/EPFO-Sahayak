@@ -30,6 +30,7 @@ import type {
   PostRejectionFlowResult,
   ReadinessResult,
 } from "@/lib/rule-engine";
+import { SUGGESTED_CATEGORY_CAVEAT } from "@/lib/rule-engine";
 import { dateInputError } from "@/lib/ui/date-validation";
 import { getOrCreateSessionId } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
@@ -1625,9 +1626,10 @@ export default function Wizard() {
               <div className="rounded-xl bg-accent-50 border border-accent-100 px-4 py-3.5 space-y-2">
                 <p className="text-xs font-semibold text-accent-700">Where to file</p>
                 <p className="text-xs text-accent-600 leading-relaxed">
-                  Go to <strong>EPFiGMS</strong> (epfigms.gov.in). Select your establishment, choose the most relevant category
-                  from the dropdown, and paste the text above into the description box.
+                  Go to <strong>EPFiGMS</strong> (epfigms.gov.in). Select your establishment, then look for a category close to{" "}
+                  <strong>&ldquo;{grievance.suggestedCategory}&rdquo;</strong> and paste the text above into the description box.
                 </p>
+                <p className="text-xs text-accent-600/80 leading-relaxed italic">{SUGGESTED_CATEGORY_CAVEAT}</p>
                 <a
                   href="https://epfigms.gov.in"
                   target="_blank"

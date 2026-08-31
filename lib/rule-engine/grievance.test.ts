@@ -28,7 +28,7 @@ describe("buildGrievance — missing-info guard", () => {
     const result = buildGrievance({
       ...base,
       uan: "",
-      kind: { type: "standard", codeName: "Date of Exit not marked", issueSentence: "x" },
+      kind: { type: "standard", code: "CODE_2_DOE", codeName: "Date of Exit not marked", issueSentence: "x" },
     });
     expect(result.ready).toBe(false);
     if (!result.ready && result.reason === "missing_info") {
@@ -43,6 +43,7 @@ describe("buildGrievance — Variant A (standard)", () => {
       ...base,
       kind: {
         type: "standard",
+        code: "CODE_2_DOE",
         codeName: "Date of Exit not marked",
         issueSentence: "Your former employer has not marked your Date of Exit.",
       },
@@ -57,11 +58,34 @@ describe("buildGrievance — Variant A (standard)", () => {
     }
   });
 
+  // Ticket 14 (2026-08-31): EPFiGMS's exact category dropdown is only visible after a real
+  // citizen's UAN+OTP login — unreachable in this environment, and no secondary source
+  // documents it either. Shipping a broad-category *hint* instead (Choice 2, decided with
+  // the product owner), honestly labeled as a guess, not a confirmed EPFiGMS value. Code 4
+  // (EPS) is the one deliberate differentiation — it's literally the pension component.
+  it("suggests 'PF Withdrawal' as the broad category for a non-EPS standard code", () => {
+    const result = buildGrievance({
+      ...base,
+      kind: { type: "standard", code: "CODE_2_DOE", codeName: "Date of Exit not marked", issueSentence: "x" },
+    });
+    expect(result.ready).toBe(true);
+    if (result.ready) expect(result.suggestedCategory).toBe("PF Withdrawal");
+  });
+
+  it("suggests 'Pension Settlement' for the EPS code specifically", () => {
+    const result = buildGrievance({
+      ...base,
+      kind: { type: "standard", code: "CODE_4_EPS", codeName: "EPS discrepancy", issueSentence: "x" },
+    });
+    expect(result.ready).toBe(true);
+    if (result.ready) expect(result.suggestedCategory).toBe("Pension Settlement");
+  });
+
   it("appends the deadline citation block when the deadline was missed", () => {
     const result = buildGrievance({
       ...base,
       deadline: MISSED,
-      kind: { type: "standard", codeName: "Date of Exit not marked", issueSentence: "x" },
+      kind: { type: "standard", code: "CODE_2_DOE", codeName: "Date of Exit not marked", issueSentence: "x" },
     });
     expect(result.ready).toBe(true);
     if (result.ready) {
@@ -75,7 +99,7 @@ describe("buildGrievance — Variant A (standard)", () => {
     const result = buildGrievance({
       ...base,
       deadline: NOT_YET_DUE,
-      kind: { type: "standard", codeName: "Date of Exit not marked", issueSentence: "x" },
+      kind: { type: "standard", code: "CODE_2_DOE", codeName: "Date of Exit not marked", issueSentence: "x" },
     });
     expect(result.ready).toBe(true);
     if (result.ready) {
@@ -100,6 +124,7 @@ describe("buildGrievance — Variant B (bank KYC escalation)", () => {
       expect(result.variant).toBe("B");
       expect(result.body).not.toMatch(/employer/i);
       expect(result.body).toMatch(/longer than the typical/i);
+      expect(result.suggestedCategory).toBe("PF Withdrawal");
     }
   });
 
@@ -128,6 +153,7 @@ describe("buildGrievance — Variant C (portal sync bug)", () => {
     if (result.ready) {
       expect(result.variant).toBe("C");
       expect(result.body).toMatch(/synchronization issue/);
+      expect(result.suggestedCategory).toBe("PF Withdrawal");
     }
   });
 });
@@ -139,6 +165,7 @@ describe("buildGrievance — Variant D (approved but not credited)", () => {
     if (result.ready) {
       expect(result.variant).toBe("D");
       expect(result.body).toContain(base.today_date);
+      expect(result.suggestedCategory).toBe("PF Withdrawal");
     }
   });
 });
@@ -151,6 +178,7 @@ describe("buildGrievance — Variant E (demand the real reason)", () => {
       expect(result.variant).toBe("E");
       expect(result.body).toMatch(/Date of Exit/);
       expect(result.body).toMatch(/EPS contribution history/);
+      expect(result.suggestedCategory).toBe("PF Withdrawal");
     }
   });
 });

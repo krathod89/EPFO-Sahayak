@@ -2,17 +2,34 @@
 // Only the first-level EPFiGMS grievance is built here — a second-level CPGRAMS
 // escalation template is named v2 scope (spec Section 9, gap 7), not built in this module.
 //
-// NOTE (spec Section 6, gap 8): EPFiGMS's category-dropdown taxonomy was never captured.
-// This module generates the free-text BODY only. Selecting the right dropdown category is
-// a known open gap, not something this module can do yet.
+// NOTE (ticket 14, 2026-08-31): EPFiGMS's exact category/subcategory dropdown taxonomy is
+// only visible after a real citizen's UAN+OTP login — confirmed unreachable in this
+// environment, and no secondary source documents it either (checked). Rather than wait
+// indefinitely, this module ships a broad-category HINT (`suggestedCategory` below) built
+// from `SUGGESTED_CATEGORY_BY_CODE` in codes.ts (per-code data lives there, alongside every
+// other code-keyed copy constant — see that file for the full citation and caveat).
 
+import { SUGGESTED_CATEGORY_BY_CODE, type SuggestedCategory } from "./codes";
 import type { DeadlineResult } from "./deadline";
-import type { ISODate } from "./types";
+import type { ISODate, RuleCode } from "./types";
 
 export type GrievanceVariant = "A" | "B" | "C" | "D" | "E";
+export type { SuggestedCategory } from "./codes";
+export { SUGGESTED_CATEGORY_CAVEAT } from "./codes";
+
+/** Variant A's shape — Codes 1 (standard branch), 2, 4, 5. `code` carries which one, so
+ * `suggestedCategoryFor()` can look up the right category. Exported so index.ts's two
+ * builder functions (`kindForPrimaryCode`, `kindForSelfCheckIssue`) can type their return
+ * value against this instead of duplicating the object shape inline. */
+export interface StandardKind {
+  type: "standard";
+  code: RuleCode;
+  codeName: string;
+  issueSentence: string;
+}
 
 type VariantKind =
-  | { type: "standard"; codeName: string; issueSentence: string } // Variant A — Codes 1 (standard branch), 2, 4, 5
+  | StandardKind
   | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: ISODate } // Variant B — Code 3, band 3 only.
     // Text re-anchored 2026-08-31 (ticket 13): no longer references employer approval —
     // EPFO's April 2025 order removed that step from bank-KYC seeding. See waitBands.ts.
@@ -31,9 +48,28 @@ export interface GrievanceRequest {
 }
 
 export type GrievanceOutput =
-  | { ready: true; variant: GrievanceVariant; subject: string; body: string; deadlineCited: boolean }
+  | { ready: true; variant: GrievanceVariant; subject: string; body: string; deadlineCited: boolean; suggestedCategory: SuggestedCategory }
   | { ready: false; reason: "missing_info"; missing: ("uan" | "claim_id")[] }
   | { ready: false; reason: "not_applicable"; note: string };
+
+/** Looks up each variant's broad-category guess through the single exhaustive table in
+ * codes.ts (`SUGGESTED_CATEGORY_BY_CODE`), rather than a second, separately-maintained guess
+ * here — Variants B/C/D/E are each fixed 1:1 to one code, so they look that code straight up;
+ * Variant A (`standard`) carries its code directly. See module note above for why this is a
+ * guess, not an exact mapping. */
+function suggestedCategoryFor(kind: VariantKind): SuggestedCategory {
+  const code: RuleCode =
+    kind.type === "standard"
+      ? kind.code
+      : kind.type === "bank_kyc_escalate"
+        ? "CODE_3_BANK_KYC"
+        : kind.type === "portal_sync_bug"
+          ? "CODE_1_NAME_DOB"
+          : kind.type === "approved_not_credited"
+            ? "CODE_6_APPROVED_NOT_CREDITED"
+            : "CODE_7_NO_REASON"; // demand_reason
+  return SUGGESTED_CATEGORY_BY_CODE[code];
+}
 
 function deadlineCitation(deadline: DeadlineResult | undefined, filingDate: ISODate): string | null {
   if (!deadline || deadline.status !== "MISSED") return null;
@@ -107,5 +143,6 @@ export function buildGrievance(request: GrievanceRequest): GrievanceOutput {
     subject: content.subject,
     body,
     deadlineCited: citation !== null,
+    suggestedCategory: suggestedCategoryFor(request.kind),
   };
 }
