@@ -23,6 +23,7 @@ import type {
   YesNoUnsure,
   SelfCheckAnswers,
   NameDobKycPageStatus,
+  BankAccountType,
   DiagnosisEntry,
   DeadlineResult,
   GrievanceOutput,
@@ -30,7 +31,7 @@ import type {
   PostRejectionFlowResult,
   ReadinessResult,
 } from "@/lib/rule-engine";
-import { SUGGESTED_CATEGORY_CAVEAT } from "@/lib/rule-engine";
+import { SUGGESTED_CATEGORY_CAVEAT, hasBranch } from "@/lib/rule-engine";
 import { dateInputError } from "@/lib/ui/date-validation";
 import { getOrCreateSessionId } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
@@ -43,6 +44,7 @@ type Screen =
   | "landing"
   | "selectCodes"
   | "code1Question"
+  | "code3AccountTypeQuestion"
   | "code3Question"
   | "selfCheck"
   | "filingDate"
@@ -67,6 +69,7 @@ interface WizardState {
   path: "A" | "B" | null;
   selectedCodes: RuleCode[];
   namedobKycPageStatus: NameDobKycPageStatus | null;
+  bankAccountType: BankAccountType | null;
   bankKycSubmissionDate: string | null;
   selfCheckAnswers: SelfCheckAnswersState;
   filingDate: string | null;
@@ -89,6 +92,7 @@ const init: WizardState = {
   path: null,
   selectedCodes: [],
   namedobKycPageStatus: null,
+  bankAccountType: null,
   bankKycSubmissionDate: null,
   selfCheckAnswers: { ...emptySelfCheck },
   filingDate: null,
@@ -183,6 +187,7 @@ const VALID_SCREENS = new Set<Screen>([
   "landing",
   "selectCodes",
   "code1Question",
+  "code3AccountTypeQuestion",
   "code3Question",
   "selfCheck",
   "filingDate",
@@ -244,11 +249,15 @@ function nextScreen(current: Screen, s: WizardState): Screen {
     case "selectCodes":
       if (s.selectedCodes.includes("CODE_7_NO_REASON")) return "selfCheck";
       if (s.selectedCodes.includes("CODE_1_NAME_DOB")) return "code1Question";
-      if (s.selectedCodes.includes("CODE_3_BANK_KYC")) return "code3Question";
+      if (s.selectedCodes.includes("CODE_3_BANK_KYC")) return "code3AccountTypeQuestion";
       return "filingDate";
     case "code1Question":
-      if (s.selectedCodes.includes("CODE_3_BANK_KYC")) return "code3Question";
+      if (s.selectedCodes.includes("CODE_3_BANK_KYC")) return "code3AccountTypeQuestion";
       return "filingDate";
+    // A joint account (ticket 15) is a hard rejection independent of timing — skip the
+    // submission-date question entirely rather than ask for a date that won't matter.
+    case "code3AccountTypeQuestion":
+      return s.bankAccountType === "joint" ? "filingDate" : "code3Question";
     case "code3Question":
       return "filingDate";
     case "selfCheck":
@@ -545,7 +554,8 @@ interface EntryPriority {
 function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: EntryPriority }) {
   const label = CODE_DEFINITIONS[entry.code].name;
   const tierLabel = TIER_LABELS[entry.code];
-  const isPortalSyncBug = !!entry.meta && "branch" in entry.meta && entry.meta.branch === "portal_sync_bug";
+  const isPortalSyncBug = hasBranch(entry, "portal_sync_bug");
+  const isJointAccount = hasBranch(entry, "joint_account");
   const band = entry.meta && "band" in entry.meta ? entry.meta.band : undefined;
 
   const tierColors: Record<string, string> = { tier1: "border-l-amber-400", tier2: "border-l-blue-400", unranked: "border-l-warm-300" };
@@ -581,6 +591,9 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
           {priority && priority.tier !== "unranked" && tierLabel && <span className="text-xs text-warm-600">{tierLabel}</span>}
           {isPortalSyncBug && (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Portal sync issue</span>
+          )}
+          {isJointAccount && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Joint account</span>
           )}
         </div>
         <h3 className="font-display font-semibold text-base text-warm-900 mt-1.5">{label}</h3>
@@ -856,7 +869,10 @@ export default function Wizard() {
       filing_date: s.filingDate!,
       kyc_complete_at_filing: s.kycCompleteAtFiling!,
       namedob_kyc_page_status: s.selectedCodes.includes("CODE_1_NAME_DOB") ? s.namedobKycPageStatus ?? undefined : undefined,
-      bank_kyc_submission_date: s.selectedCodes.includes("CODE_3_BANK_KYC") ? s.bankKycSubmissionDate ?? undefined : undefined,
+      bank_account_type: s.selectedCodes.includes("CODE_3_BANK_KYC") ? s.bankAccountType ?? undefined : undefined,
+      // No submission date needed for a joint account — a hard rejection independent of timing.
+      bank_kyc_submission_date:
+        s.selectedCodes.includes("CODE_3_BANK_KYC") && s.bankAccountType !== "joint" ? s.bankKycSubmissionDate ?? undefined : undefined,
       self_check_answers:
         s.selectedCodes.includes("CODE_7_NO_REASON") && isSelfCheckComplete(s.selfCheckAnswers)
           ? (s.selfCheckAnswers as SelfCheckAnswers)
@@ -876,7 +892,7 @@ export default function Wizard() {
     if (s.screen !== "diagnosisSummary" && s.screen !== "grievanceOutput") return;
     if (!s.filingDate || s.kycCompleteAtFiling === null) return;
 
-    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankKycSubmissionDate, s.selfCheckAnswers]);
+    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.selfCheckAnswers]);
     if (key === lastPostRejectionKeyRef.current) return; // nothing this fetch depends on actually changed
 
     const myRequestId = ++postRejectionRequestIdRef.current;
@@ -1224,6 +1240,49 @@ export default function Wizard() {
           </div>
 
           <PrimaryBtn full disabled={!s.namedobKycPageStatus} onClick={advance}>
+            Continue <ArrowRight className="size-4" />
+          </PrimaryBtn>
+        </div>
+      </Shell>
+    );
+  }
+
+  // ── Code 3 account-type question (ticket 15) ───────────────────────────
+  // Asked before the submission-date question, one decision per screen — a joint account is
+  // a hard rejection independent of timing, so it needs to be ruled out first, not folded
+  // into the same screen as the date question.
+
+  if (s.screen === "code3AccountTypeQuestion") {
+    content = (
+      <Shell step={2} totalSteps={5} onBack={back} label="Bank KYC">
+        <div className="space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Bank KYC not verified</p>
+            <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">Is the bank account in your name only?</h2>
+            <p className="text-warm-600 text-sm mt-2 leading-relaxed">
+              EPFO only pays into an account held solely by you. A joint account — one with more than one holder, even if you&apos;re
+              one of them — is rejected outright, regardless of KYC status.
+            </p>
+          </div>
+
+          <div className="space-y-2" role="radiogroup" aria-label="Is the bank account in your name only?">
+            {(["individual", "joint", "unsure"] as const).map((v) => (
+              <RadioCard
+                key={v}
+                label={
+                  v === "individual"
+                    ? "Yes — it's in my name only"
+                    : v === "joint"
+                      ? "No — it's a joint account"
+                      : "I'm not sure"
+                }
+                checked={s.bankAccountType === v}
+                onChange={() => setS({ ...s, bankAccountType: v })}
+              />
+            ))}
+          </div>
+
+          <PrimaryBtn full disabled={!s.bankAccountType} onClick={advance}>
             Continue <ArrowRight className="size-4" />
           </PrimaryBtn>
         </div>
@@ -1610,7 +1669,10 @@ export default function Wizard() {
             </div>
           ) : grievance && !grievance.ready && grievance.reason === "not_applicable" ? (
             <div className="rounded-2xl border border-warm-200 bg-warm-50 px-5 py-4 space-y-2">
-              <p className="text-sm font-semibold text-warm-700">No grievance yet — not time to escalate</p>
+              {/* Generic on purpose — this reason covers two different cases: "not stuck long
+                  enough yet" (bands 1-2) and "not an EPFO issue to escalate at all" (a joint
+                  account, ticket 15). The note below always carries the specific reason. */}
+              <p className="text-sm font-semibold text-warm-700">No grievance to file right now</p>
               <p className="text-sm text-warm-600 leading-relaxed">{grievance.note}</p>
             </div>
           ) : grievance && grievance.ready ? (

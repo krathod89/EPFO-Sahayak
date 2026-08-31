@@ -90,4 +90,34 @@ describe("validatePostRejectionCrossFields", () => {
     });
     expect(errors.some((e) => e.includes("duplicate"))).toBe(true);
   });
+
+  // Ticket 15 (joint-account rejection): bank_account_type is required whenever CODE_3 is
+  // selected, and bank_kyc_submission_date is required too — UNLESS the account is joint,
+  // since a joint-account rejection is a hard rejection independent of timing.
+  it("requires bank_account_type when CODE_3 is selected", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_3_BANK_KYC"],
+      bank_kyc_submission_date: "2026-08-01",
+    });
+    expect(errors.some((e) => e.includes("bank_account_type"))).toBe(true);
+  });
+
+  it("requires bank_kyc_submission_date when the account is individual", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_3_BANK_KYC"],
+      bank_account_type: "individual",
+    });
+    expect(errors.some((e) => e.includes("bank_kyc_submission_date"))).toBe(true);
+  });
+
+  it("does NOT require bank_kyc_submission_date when the account is joint", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_3_BANK_KYC"],
+      bank_account_type: "joint",
+    });
+    expect(errors).toHaveLength(0);
+  });
 });

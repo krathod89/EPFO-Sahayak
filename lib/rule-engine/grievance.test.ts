@@ -146,6 +146,20 @@ describe("buildGrievance — Variant B (bank KYC escalation)", () => {
   });
 });
 
+describe("buildGrievance — joint account (no grievance generated)", () => {
+  // Ticket 15 (2026-08-31): the fix for a joint-account rejection is opening an individual
+  // account, not something to escalate with EPFO — matches the same "not_applicable" pattern
+  // as bands 1-2 (wait/check yourself, don't file a grievance yet).
+  it("refuses to generate a grievance for a joint account, with no employer framing", () => {
+    const result = buildGrievance({ ...base, kind: { type: "joint_account" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready && result.reason === "not_applicable") {
+      expect(result.note).toMatch(/individual/i);
+      expect(result.note).not.toMatch(/employer/i);
+    }
+  });
+});
+
 describe("buildGrievance — Variant C (portal sync bug)", () => {
   it("builds the sync-bug-specific text", () => {
     const result = buildGrievance({ ...base, kind: { type: "portal_sync_bug" } });

@@ -31,7 +31,8 @@ The engine has **four core functions**:
 | `kyc_complete_at_filing` | boolean | **Required** for `post_rejection` (feeds H11 check) | Citizen-reported: was their KYC complete when they filed? Drives the 3-day vs. 20-day branch. |
 | `today_date` | date | System-provided | Not entered by the citizen. |
 | `namedob_kyc_page_status` | enum: `approved_and_verified`, `not_verified`, `unsure` | **Required if `code1` selected** | Answers the branching sub-question in Section 3, Code 1. |
-| `bank_kyc_submission_date` | date | **Required if `code3` selected** | Feeds the 3-band wait-time check in Section 3, Code 3. |
+| `bank_account_type` | enum: `individual`, `joint`, `unsure` | **Required if `code3` selected** (ticket 15, 2026-08-31) | Answers Code 3's joint-account branching sub-question (Section 3, Code 3). `joint` skips the wait-time check entirely — a joint account is a hard rejection independent of timing. |
+| `bank_kyc_submission_date` | date | **Required if `code3` selected AND `bank_account_type` is not `joint`** | Feeds the 3-band wait-time check in Section 3, Code 3. Not needed for a joint-account rejection. |
 | `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across both cases (Section 3, Code 7; Section 7). |
 
 **The 5-item self-check checklist** (used by Code 7 and by the pre-filing entry point — same fields, same logic):
@@ -75,7 +76,17 @@ Each row: trigger, plain-language explanation copy (draft), recommended fix, and
 
 **Trigger:** citizen selects this remark; matches EPFO remarks about unverified bank KYC, or a mismatch in account number, IFSC code, or account-holder name.
 
-**Branching sub-question:** bank KYC submission date (`bank_kyc_submission_date`), used to compute a wait-time band against `today_date`.
+**Branching sub-questions, asked in order:**
+1. `bank_account_type` — is the payout account solely in the citizen's name? (ticket 15, 2026-08-31)
+2. If not `joint`: bank KYC submission date (`bank_kyc_submission_date`), used to compute a wait-time band against `today_date`.
+
+**Joint-account branch (ticket 15) — checked first, before the wait-time bands below.** Found while auditing coverage past the original 15-case sample's own biased search terms ("bank KYC OR IFSC," which would confirm the existing framing rather than surface a case outside it). EPFO requires the payout account to be solely in the citizen's name; a joint account is rejected outright — a hard rejection independent of timing, not a variant of "unverified/still processing." No submission date is asked or needed for this branch.
+
+> **Explanation:** "EPFO requires the payout account to be in your name only. A joint account — one with more than one holder — is not accepted, even if your name is one of the holders. This is separate from KYC verification timing; it is a hard rejection, not something that clears with more waiting."
+>
+> **Fix:** "Open an individual bank account in your own name only. Then submit a new bank-seeding/KYC request on the UAN portal with that account. You do not need to wait or raise a grievance — the fix is opening the right kind of account."
+
+`bank_account_type: unsure` routes to the normal wait-time-band flow below (same default-to-less-severe pattern as Code 1's `unsure` routing to `standard_mismatch`).
 
 **Explanation (always shown first):** "EPFO must confirm that your bank account number, IFSC code, and account-holder name all match your other records before it can pay you. Your bank and NPCI verify this directly — since April 2025, your employer's approval is no longer part of this step. If the check is still in progress, or something doesn't match, your claim cannot move forward — even if every other part of it is approved."
 
@@ -235,6 +246,8 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 > {DEADLINE_CITATION, if applicable}
 
 *(For Bands 1 and 2, no grievance is generated — the recommended action is to wait or check with your bank directly, not to file a grievance yet.)*
+
+**Joint account (ticket 15) — also no grievance generated, for a different reason.** Unlike bands 1–2 (not stuck *yet*), a joint-account rejection is never an EPFO error to escalate — the fix is entirely on the citizen's side (open an individual account). The "not applicable" note for this case: *"No grievance is generated for a joint-account rejection — the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO."*
 
 ### Variant C — portal sync bug (Code 1, `namedob_kyc_page_status = approved_and_verified`)
 

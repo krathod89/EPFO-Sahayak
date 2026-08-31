@@ -36,6 +36,7 @@ const postRejectionSchema = z.object({
   kyc_complete_at_filing: z.boolean(),
   today_date: isoDate.optional(),
   namedob_kyc_page_status: z.enum(["approved_and_verified", "not_verified", "unsure"]).optional(),
+  bank_account_type: z.enum(["individual", "joint", "unsure"]).optional(),
   bank_kyc_submission_date: isoDate.optional(),
   self_check_answers: selfCheckAnswers.optional(),
 });
@@ -67,8 +68,13 @@ export function validatePostRejectionCrossFields(data: PostRejectionRequest): st
   if (codes.includes("CODE_1_NAME_DOB") && !data.namedob_kyc_page_status) {
     errors.push("namedob_kyc_page_status is required when CODE_1_NAME_DOB is selected");
   }
-  if (codes.includes("CODE_3_BANK_KYC") && !data.bank_kyc_submission_date) {
-    errors.push("bank_kyc_submission_date is required when CODE_3_BANK_KYC is selected");
+  if (codes.includes("CODE_3_BANK_KYC") && !data.bank_account_type) {
+    errors.push("bank_account_type is required when CODE_3_BANK_KYC is selected");
+  }
+  // A joint-account rejection (ticket 15) is a hard rejection independent of timing — no
+  // submission date applies, so it's only required for the individual/unsure paths.
+  if (codes.includes("CODE_3_BANK_KYC") && data.bank_account_type !== "joint" && !data.bank_kyc_submission_date) {
+    errors.push("bank_kyc_submission_date is required when CODE_3_BANK_KYC is selected and the account is not joint");
   }
   if (codes.includes("CODE_7_NO_REASON") && !data.self_check_answers) {
     errors.push("self_check_answers is required when CODE_7_NO_REASON is selected");

@@ -5,8 +5,8 @@
 
 import { CODE_DEFINITIONS } from "./codes";
 import { checkDeadline, type DeadlineResult } from "./deadline";
-import { diagnose, type DiagnoseResult, type DiagnosisEntry } from "./diagnose";
-import { buildGrievance, type GrievanceOutput, type StandardKind } from "./grievance";
+import { diagnose, hasBranch, type DiagnoseResult, type DiagnosisEntry } from "./diagnose";
+import { buildGrievance, type GrievanceOutput, type StandardKind, type VariantKind } from "./grievance";
 import { prioritize, type PriorityResult } from "./prioritize";
 import { readinessResult, type ReadinessResult } from "./readiness";
 import type { DiagnosableCode, PostRejectionInput, PreFilingInput, RuleCode } from "./types";
@@ -45,16 +45,20 @@ export interface PostRejectionFlowResult {
   grievance?: GrievanceOutput;
 }
 
-function kindForPrimaryCode(
-  code: DiagnosableCode,
-  diag: DiagnoseResult,
-  input: PostRejectionInput
-): StandardKind | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: string } | { type: "portal_sync_bug" } {
+// Return type is the full VariantKind (grievance.ts) rather than a re-declared subset union —
+// this function only ever constructs 4 of its 6 members (approved_not_credited/demand_reason
+// are built directly elsewhere, for Codes 6/7), but typing it as the shared union means a
+// future VariantKind addition needs updating in exactly one place, not two kept in sync by
+// hand (ticket 15, code-review pass).
+function kindForPrimaryCode(code: DiagnosableCode, diag: DiagnoseResult, input: PostRejectionInput): VariantKind {
   const entry = diag.entries.find((e) => e.code === code);
   if (!entry) throw new Error(`No diagnosis entry found for primary code ${code}`);
 
-  if (code === "CODE_1_NAME_DOB" && entry.meta && "branch" in entry.meta && entry.meta.branch === "portal_sync_bug") {
+  if (code === "CODE_1_NAME_DOB" && hasBranch(entry, "portal_sync_bug")) {
     return { type: "portal_sync_bug" };
+  }
+  if (code === "CODE_3_BANK_KYC" && hasBranch(entry, "joint_account")) {
+    return { type: "joint_account" };
   }
   if (code === "CODE_3_BANK_KYC" && entry.meta && "band" in entry.meta) {
     return {
@@ -83,6 +87,7 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
     codes: input.rejection_codes_selected,
     today_date: today,
     namedob_kyc_page_status: input.namedob_kyc_page_status,
+    bank_account_type: input.bank_account_type,
     bank_kyc_submission_date: input.bank_kyc_submission_date,
     self_check_answers: input.self_check_answers,
   });
@@ -166,7 +171,8 @@ export function runPreFilingFlow(input: PreFilingInput): ReadinessResult {
 }
 
 export * from "./types";
-export type { DiagnosisEntry } from "./diagnose";
+export type { DiagnosisEntry, EntryBranch } from "./diagnose";
+export { hasBranch } from "./diagnose";
 export type { PriorityResult } from "./prioritize";
 export type { DeadlineResult, DeadlineStatus } from "./deadline";
 export type { GrievanceOutput, GrievanceVariant, SuggestedCategory } from "./grievance";
