@@ -1,6 +1,6 @@
 # 13 — Fix Code 3: employer-approval step no longer exists (EPFO order, April 2025)
 
-**Status:** Open — real correctness bug, not a copy nit
+**Status:** Done (2026-08-31) — built, tested, merged (PR #10), and verified live in production
 
 Traces to: `spec.md` US1 (Code 3 branch). Rule logic source: `lib/rule-engine/codes.ts` (`CODE_3_INTRO`, `CODE_3_BANDS`, `CODE_3_GENERAL`), `lib/rule-engine/waitBands.ts`.
 
@@ -29,6 +29,10 @@ This predates the app's build (Aug 2026) by well over a year. The shipped Code 3
 
 ## Done means
 
-- `waitBands.test.ts` / `codes` tests updated to match the new band definitions and copy.
-- Manual read-through confirming no remaining copy tells a citizen to chase employer approval for bank KYC.
-- `PRD.md` §10's "re-check the bank-KYC wait-time thresholds" item checked off, with this ticket's citation as the resolution.
+- [x] `waitBands.test.ts` / `codes` tests updated to match the new band definitions and copy.
+- [x] Manual read-through confirming no remaining copy tells a citizen to chase employer approval for bank KYC.
+- [x] `PRD.md` §10's "re-check the bank-KYC wait-time thresholds" item checked off, with this ticket's citation as the resolution.
+
+## Closeout (2026-08-31)
+
+Built TDD (red: `waitBands.test.ts`/`diagnose.test.ts`/`grievance.test.ts`, then green: `waitBands.ts`/`codes.ts`/`grievance.ts`). Two `code-review` passes — first found a weakened test assertion and 2 stale comments/copy (all fixed), second pass clean. Verified locally in a real browser end to end. Merged via PR #10. **Verified live in production** by querying `POST /api/diagnose` directly against `epfo-sahayak-pi.vercel.app` — confirmed both the diagnosis explanation/fix and the generated Variant B grievance letter carry the corrected copy with zero employer references, band/deadline math correct (43 working days → band 3, 20-day deadline missed by 41 days, 12% penalty cited). No repeat of the earlier Vercel auto-deploy gap this time.

@@ -1,6 +1,6 @@
 # 10 — 8th selectable option: "I see a reason, but it's not listed here"
 
-**Status:** Done (2026-09-01)
+**Status:** Done (2026-09-01) — built, tested, merged (PR #16), and verified live in production
 
 Traces to: `spec.md` US1 (extends it — see note below). Rule logic source to extend: `Rule Engine/Rule Engine Spec.md` §3.
 

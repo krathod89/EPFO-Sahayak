@@ -1,6 +1,6 @@
 # 14 — Capture EPFiGMS's real dropdown taxonomy for grievance generation
 
-**Status:** Open
+**Status:** Done (2026-09-01) — built, tested, merged (PR #12), and verified live in production
 
 Traces to: `spec.md` US4. Rule logic source: `lib/rule-engine/grievance.ts` (source-of-truth gap already flagged inline: *"EPFiGMS's category-dropdown taxonomy was never captured. This module generates the free-text BODY only."*).
 
@@ -30,6 +30,10 @@ Once Phase 2 real volunteers are using the shipped tool on their own real cases,
 
 ## Done means
 
-- `grievance.test.ts` extended to assert each variant carries a `suggestedCategory` and that it's a plain broad-category string (not fabricated as a confirmed EPFiGMS value).
-- UI copy reviewed to confirm the hint reads as a guess, never as a confirmed instruction.
-- `PRD.md` §10's "capture the actual EPFiGMS category/subcategory dropdown taxonomy" item updated (not simply checked off) — records the blocker found, the Choice 2 decision, and the new Phase 2 follow-up item.
+- [x] `grievance.test.ts` extended to assert each variant carries a `suggestedCategory` and that it's a plain broad-category string (not fabricated as a confirmed EPFiGMS value).
+- [x] UI copy reviewed to confirm the hint reads as a guess, never as a confirmed instruction.
+- [x] `PRD.md` §10's "capture the actual EPFiGMS category/subcategory dropdown taxonomy" item updated (not simply checked off) — records the blocker found, the Choice 2 decision, and the new Phase 2 follow-up item.
+
+## Closeout (2026-09-01)
+
+Built TDD (red: `grievance.test.ts`, then green: `grievance.ts`/`index.ts`). Two `code-review` passes — first clean; second flagged 3 real maintainability issues (an if-chain instead of the codebase's established `Record<RuleCode, ...>` lookup pattern, a 3-times-duplicated inline type, copy living in the wrong module) — all fixed: category data + caveat moved into `codes.ts` alongside every other per-code constant, `StandardKind` exported and reused instead of duplicated, `suggestedCategoryFor()` now looks every variant up through the one shared table. Verified locally end to end (live API + real browser walkthrough via Claude-in-Chrome). Merged via PR #12. **Verified live in production** by querying `POST /api/diagnose` directly against `epfo-sahayak-pi.vercel.app` — confirmed `CODE_4_EPS` returns `suggestedCategory: "Pension Settlement"` and other codes return `"PF Withdrawal"`, matching what shipped.

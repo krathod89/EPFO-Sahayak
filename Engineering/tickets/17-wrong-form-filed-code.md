@@ -1,6 +1,6 @@
 # 17 — New code: wrong claim form filed
 
-**Status:** Done (2026-09-01)
+**Status:** Done (2026-09-01) — built, tested, merged (PR #15), and verified live in production
 
 Traces to: `spec.md` US1 (extends it — new code, same pattern as ticket 10). Rule logic source to extend: `Rule Engine/Rule Engine Spec.md` §3.
 
