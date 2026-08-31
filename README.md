@@ -33,7 +33,7 @@ npm run dev            # http://localhost:3000
 
 - **`POST /api/diagnose`** — `entry_point: "post_rejection" | "pre_filing"` selects the flow; see `Engineering/spec.md` for the request/response shape and `Rule Engine/Rule Engine Spec.md` for the full logic. An optional `session_id` in the body tags the server-computed analytics events this call fires (see `Engineering/analytics.md`).
 
-There is no separate analytics endpoint — client-fired events (session start, entry-point choice, grievance-copy; feedback still pending, see Section 10 of `PRD.md`) go straight to Mixpanel from the browser via `lib/ui/mixpanel-client.ts`, using a per-browser session id shared with the API call.
+There is no separate analytics endpoint — client-fired events (session start, entry-point choice, grievance-copy, feedback) go straight to Mixpanel from the browser via `lib/ui/mixpanel-client.ts`, using a per-browser session id shared with the API call.
 
 ## Project structure
 

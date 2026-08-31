@@ -13,9 +13,9 @@ Events are tracked in Mixpanel, using `session_id` as `distinct_id` (`Engineerin
 | `diagnosis_shown` | `/api/diagnose` returns a result for `post_rejection`. | `codes`, `priority_ranked` (bool), `tier1`, `tier2`, `unranked` | Server (`app/api/diagnose/route.ts`) |
 | `deadline_check_shown` | The deadline/penalty result is computed. | `status`: `NOT_YET_DUE` \| `MISSED`, `deadline_days`: `3`\|`20` | Server (`app/api/diagnose/route.ts`) |
 | `grievance_generated` | Grievance text is produced. | `variant`: `A`–`E`, `deadline_cited`: bool | Server (`app/api/diagnose/route.ts`) |
-| `grievance_copied` | The citizen copies the grievance text to their clipboard. | `variant` | Client (direct to Mixpanel) — this is the one event that only the client can observe |
+| `grievance_copied` | The citizen copies the grievance text to their clipboard. | `variant` | Client (direct to Mixpanel) — this is the one event that only the client can observe. Still fired, but deliberately not chased for prod verification (2026-08-30, see `PRD.md` changelog) — `grievance_generated` is the event that actually signals H13, this one is a UX nicety. |
 | `readiness_result_shown` | The pre-filing flow returns a result. | `result`: `ready` \| `mostly_ready` \| `issues_found`, `issue_count`, `unsure_count` | Server (`app/api/diagnose/route.ts`) |
-| `feedback_submitted` | The citizen answers "was this helpful?" | `helpful`: bool, `context`: which screen/flow it followed | Client (direct to Mixpanel) |
+| `feedback_submitted` | The citizen submits a like/dislike (+ optional comment) on the grievance-output or readiness-result screen. | `sentiment`: `like` \| `dislike`, `context`: `grievance_output` \| `readiness_result`, `comment`?: string (only present if non-empty, trimmed, capped at 500 chars) | Client (direct to Mixpanel) — see `lib/ui/feedback.ts`. Built 2026-08-30 (US7 in `spec.md`); until then this row described a planned event with no UI behind it. |
 
 **Rules for every ticket that fires one of these:** instrument the event in the same ticket that builds the feature, not as a follow-up (per the route's standing rule — an event added later tends to just not happen). Verify it actually lands in the Mixpanel dashboard in the deployed environment before calling the ticket done, not just that the code calls `trackServerEvent()` or the client SDK.
 

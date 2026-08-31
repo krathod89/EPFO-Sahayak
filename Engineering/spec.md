@@ -48,6 +48,10 @@ As a citizen who hasn't filed yet, I want to run the same 5-item self-check befo
 **US6 — Track usage anonymously, no login.**
 As the product owner, I want usage and feedback tracked per anonymous session (no account, no PII), so I can learn which codes get selected and whether the tool helps, without taking on login infrastructure or a PII retention policy this MVP explicitly avoids (PRD §7a item 7).
 
+**US7 — Tell us if this helped.**
+As a citizen who just reached a result (grievance text, or a readiness check), I want to quickly say whether it helped — a like/dislike plus an optional comment — so the product owner can learn whether the tool actually works, without it costing me an account or a mandatory survey. Placed at the end of each flow, not mid-questionnaire, because that's the only point the citizen has enough context to judge it, and the guided Q&A itself stays uninterrupted (PRD §7a item 3: "one decision per screen").
+*Covers `analytics.md`'s `feedback_submitted` event. Added 2026-08-30, closing the gap where the event was documented but the UI didn't exist yet.*
+
 **Explicitly out of scope for this MVP** (named in PRD §7a item 8, not silently dropped):
 - CPGRAMS second-level escalation template (v2).
 - Reference-code case retrieval / any case data persistence (v2 — needs a retention/deletion policy first).

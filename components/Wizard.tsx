@@ -14,6 +14,8 @@ import {
   Shield,
   ArrowRight,
   CircleAlert,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { CODE_DEFINITIONS } from "@/lib/rule-engine/codes";
 import type {
@@ -32,6 +34,7 @@ import { dateInputError } from "@/lib/ui/date-validation";
 import { getOrCreateSessionId } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
 import { postDiagnose, DiagnoseApiError } from "@/lib/ui/api-client";
+import { buildFeedbackEvent, type FeedbackContext, type FeedbackSentiment } from "@/lib/ui/feedback";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -690,6 +693,90 @@ function CopyBlock({ text, onCopy }: { text: string; onCopy?: () => void }) {
   );
 }
 
+function FeedbackWidget({
+  sessionId,
+  context,
+  submitted,
+  onSubmitted,
+}: {
+  sessionId: string;
+  context: FeedbackContext;
+  submitted: boolean;
+  onSubmitted: () => void;
+}) {
+  const [sentiment, setSentiment] = useState<FeedbackSentiment | null>(null);
+  const [comment, setComment] = useState("");
+
+  // Placed at the end of each flow (US7, spec.md) — the only point the citizen has enough
+  // context to judge whether the result actually helped, and it doesn't interrupt the
+  // guided one-question-per-screen Q&A itself (PRD §7a item 3).
+  function send() {
+    if (!sentiment) return;
+    trackClientEvent(sessionId, "feedback_submitted", { ...buildFeedbackEvent(sentiment, context, comment) });
+    onSubmitted();
+  }
+
+  if (submitted) {
+    return (
+      <div role="status" className="rounded-xl bg-accent-50 border border-accent-100 px-4 py-3 text-sm text-accent-700 text-center">
+        Thanks for letting us know.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-warm-200 bg-white px-4 py-4 space-y-3">
+      <p className="text-sm font-semibold text-warm-700">Was this helpful?</p>
+      <div className="flex gap-2.5">
+        <button
+          onClick={() => setSentiment("like")}
+          aria-pressed={sentiment === "like"}
+          aria-label="Yes, this helped"
+          className={cn(
+            "flex items-center justify-center gap-2 flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500",
+            sentiment === "like" ? "border-accent-500 bg-accent-50 text-accent-700" : "border-warm-200 bg-white text-warm-700 hover:border-warm-300"
+          )}
+        >
+          <ThumbsUp className="size-4" /> Yes
+        </button>
+        <button
+          onClick={() => setSentiment("dislike")}
+          aria-pressed={sentiment === "dislike"}
+          aria-label="No, this didn't help"
+          className={cn(
+            "flex items-center justify-center gap-2 flex-1 rounded-xl border-2 py-2.5 text-sm font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500",
+            sentiment === "dislike" ? "border-accent-500 bg-accent-50 text-accent-700" : "border-warm-200 bg-white text-warm-700 hover:border-warm-300"
+          )}
+        >
+          <ThumbsDown className="size-4" /> No
+        </button>
+      </div>
+      {sentiment && (
+        <div className="space-y-2">
+          <label htmlFor="feedback-comment" className="block text-xs text-warm-500">
+            Anything else? (optional — please don&apos;t include your UAN, claim ID, or other personal details)
+          </label>
+          <textarea
+            id="feedback-comment"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            rows={2}
+            maxLength={500}
+            className="w-full rounded-xl border-2 border-warm-200 bg-warm-50 px-3.5 py-2.5 text-sm text-warm-900 placeholder:text-warm-400 focus:outline-none focus:border-accent-500 transition-colors resize-none"
+            placeholder="Optional comment"
+          />
+          <button
+            onClick={send}
+            className="w-full rounded-xl bg-accent-500 hover:bg-accent-600 text-white text-sm font-semibold py-2.5 transition-colors"
+          >
+            Send feedback
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Wizard ────────────────────────────────────────────────────────────
 
 export default function Wizard() {
@@ -709,6 +796,15 @@ export default function Wizard() {
   const [readinessApiResult, setReadinessApiResult] = useState<ReadinessResult | null>(null);
   const [apiPending, setApiPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  // Lives on the Wizard, not inside FeedbackWidget itself, because the widget's render guard
+  // (`grievance.ready`, `result`) can flip false-then-true again within the same visit (e.g.
+  // editing the UAN back out and back in) — that would unmount/remount FeedbackWidget and
+  // forget a submission already sent, letting the same context fire feedback_submitted twice.
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState<Record<FeedbackContext, boolean>>({
+    grievance_output: false,
+    readiness_result: false,
+  });
 
   // Each fetch effect below tracks its own "last input actually fetched" key and a
   // monotonic request id. The key check skips re-fetching when nothing relevant changed
@@ -857,6 +953,7 @@ export default function Wizard() {
     setReadinessApiResult(null);
     lastPostRejectionKeyRef.current = null;
     lastReadinessKeyRef.current = null;
+    setFeedbackSubmitted({ grievance_output: false, readiness_result: false });
     setS(init);
   }
 
@@ -1542,6 +1639,15 @@ export default function Wizard() {
             </>
           ) : null}
 
+          {grievance && grievance.ready && (
+            <FeedbackWidget
+              sessionId={sessionId}
+              context="grievance_output"
+              submitted={feedbackSubmitted.grievance_output}
+              onSubmitted={() => setFeedbackSubmitted((prev) => ({ ...prev, grievance_output: true }))}
+            />
+          )}
+
           <Disclaimer />
 
           <button onClick={startOver} className="w-full text-center text-sm text-warm-600 hover:text-warm-700 transition-colors py-2">
@@ -1622,6 +1728,15 @@ export default function Wizard() {
               )}
             </>
           ) : null}
+
+          {result && (
+            <FeedbackWidget
+              sessionId={sessionId}
+              context="readiness_result"
+              submitted={feedbackSubmitted.readiness_result}
+              onSubmitted={() => setFeedbackSubmitted((prev) => ({ ...prev, readiness_result: true }))}
+            />
+          )}
 
           <Disclaimer />
 
