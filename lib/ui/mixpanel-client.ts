@@ -1,9 +1,9 @@
 "use client";
 
-// Client-side Mixpanel tracking (Engineering/ADR/0004-analytics-via-mixpanel.md). Only the
-// four events that ADR names as client-owned live here: session_started,
-// entry_point_selected, grievance_copied. (feedback_submitted needs a "was this helpful?"
-// prompt that doesn't exist in the UI yet — not wired up until that's built.)
+// Client-side Mixpanel tracking (Engineering/ADR/0004-analytics-via-mixpanel.md). The five
+// events ADR names as client-owned live here: session_started, entry_point_selected,
+// grievance_copied, and feedback_submitted (fired from FeedbackWidget in
+// components/Wizard.tsx, via lib/ui/feedback.ts's buildFeedbackEvent — see analytics.md).
 //
 // Mixpanel project tokens are meant to be public/client-safe, the same way a publishable
 // API key is — no backend proxy needed, matching lib/analytics.ts's server-side sibling.
