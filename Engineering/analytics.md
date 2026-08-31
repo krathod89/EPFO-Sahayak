@@ -19,4 +19,13 @@ Events are tracked in Mixpanel, using `session_id` as `distinct_id` (`Engineerin
 
 **Rules for every ticket that fires one of these:** instrument the event in the same ticket that builds the feature, not as a follow-up (per the route's standing rule — an event added later tends to just not happen). Verify it actually lands in the Mixpanel dashboard in the deployed environment before calling the ticket done, not just that the code calls `trackServerEvent()` or the client SDK.
 
-**Not tracked, on purpose:** UAN, claim ID, filing date, or any other field the citizen types into the diagnose form. Those are used in-memory to produce the response and are never sent to Mixpanel. `lib/analytics.ts`'s `trackServerEvent()` enforces this with a blocked-key check, not just a code comment. If a future ticket needs to log one of these for debugging, that's a real scope change (PII enters a third-party analytics tool) — flag it, don't fold it in silently.
+**Not tracked, on purpose:** UAN, claim ID, filing date, or any other field the citizen types into the diagnose form. Those are used in-memory to produce the response and are never sent to Mixpanel. `lib/analytics.ts`'s `trackServerEvent()` enforces this with a blocked-key check, not just a code comment. The one field that *is* free text — `feedback_submitted`'s `comment` — gets its own scrub instead (`lib/ui/feedback.ts`'s `redactLikelyPii`), since a citizen could still type a UAN into it by hand. If a future ticket needs to log one of these for debugging, that's a real scope change (PII enters a third-party analytics tool) — flag it, don't fold it in silently.
+
+## Reading `feedback_submitted` comments
+
+No new build for this — it's Mixpanel's own raw Events explorer (Data → Events), filtered to `feedback_submitted`, with columns narrowed to `Time` / `sentiment` / `context` / `comment`. That filtered+column state is durable and bookmarkable: reloading the same URL restores it exactly.
+
+- **Saved view:** `https://mixpanel.com/project/4058729/view/4555102/app/events#TiQkKEaF4bsn`
+- Matches the MVP's stateless decision (PRD §7a item 7) — no new storage, no admin page, just Mixpanel's own UI. Free-tier blocks the Query/Export *API* (`402`), but this UI table itself isn't blocked.
+- Not a saved Board/Report (no such option found on the free plan for a raw event table) — it's a URL-encoded view state. It'll keep working as long as the URL isn't lost; re-derive it the same way (filter Events to `feedback_submitted`, set columns) if it ever is.
+- Revisit if comment volume grows past what a flat table is comfortable to scan — the small in-app admin page option (Supabase, already provisioned for v2) is the next step up, but is real new scope (a write path, a read path, an access decision) not worth building until the free Mixpanel view actually falls short.
