@@ -77,17 +77,19 @@ Each row: trigger, plain-language explanation copy (draft), recommended fix, and
 
 **Branching sub-question:** bank KYC submission date (`bank_kyc_submission_date`), used to compute a wait-time band against `today_date`.
 
-**Explanation (always shown first):** "EPFO must confirm that your bank account number, IFSC code, and account-holder name all match your other records before it can pay you. If any of these does not match, or the check is still in progress, your claim cannot move forward — even if every other part of it is approved."
+**Explanation (always shown first):** "EPFO must confirm that your bank account number, IFSC code, and account-holder name all match your other records before it can pay you. Your bank and NPCI verify this directly — since April 2025, your employer's approval is no longer part of this step. If the check is still in progress, or something doesn't match, your claim cannot move forward — even if every other part of it is approved."
 
 **Wait-time bands** (working days between `bank_kyc_submission_date` and `today_date`):
 
+**Re-anchored 2026-08-31 (ticket 13) — real, confirmed bug fix, not a refinement.** EPFO's own order, dated 3 April 2025, removed employer approval from bank-KYC seeding entirely: *"there shall be no requirement of approval of Employer in the bank account seeding process henceforth"* — pending employer-level requests now auto-approve once bank/NPCI verification clears, which the same order states averages ~3 working days. Confirmed via multiple convergent secondary sources (StaffNews, CAalley, United Consultancy, PlanivestFin) — `epfindia.gov.in`/`epfo.gov.in` both still 404 mid-migration, and `pib.gov.in` blocks direct fetch. The bands below (previously keyed to the *old* ~15-day-employer-then-Field-Office process) are re-anchored to the *current* process's stated average, with a buffer — a reasoned estimate, not an EPFO-published figure, same caveat status the original bands carried.
+
 | Band | Range | Reading | Fix |
 |---|---|---|---|
-| 1 | 0–7 working days | "You submitted your bank KYC {X} working days ago. This is still within the normal wait. No action is needed yet." | "No action needed. Check back after a few more working days." |
-| 2 | 8–15 working days | "You submitted your bank KYC {X} working days ago. This is at the edge of the normal wait. It is worth checking, but not yet clearly stuck." | "Contact your employer's HR or PF team and ask if they have approved your KYC request on their end. If they have, and it still shows unverified, check again in a few more days." |
-| 3 | more than 15 working days | "You submitted your bank KYC {X} working days ago. EPFO's own rule lets its Field Offices verify your KYC directly if your employer has not done so within 15 days. You have passed this point. It is time to escalate." | "Raise a grievance through EPFiGMS. Ask EPFO's Field Office to verify your bank KYC directly, since your employer has not completed this within 15 working days." |
+| 1 | 0–5 working days | "You submitted your bank KYC {X} working days ago. This is still within the typical bank/NPCI verification turnaround. No action is needed yet." | "No action needed. Check back after a few more working days." |
+| 2 | 6–10 working days | "You submitted your bank KYC {X} working days ago. This is longer than the typical turnaround. It is worth checking, but not yet clearly stuck." | "Contact your bank to confirm your account number, IFSC code, and account-holder name were submitted correctly. If everything on their end looks correct and it still shows unverified, check again in a few more days." |
+| 3 | more than 10 working days | "You submitted your bank KYC {X} working days ago. This is well beyond the typical bank/NPCI verification turnaround. It is worth escalating." | "Raise a grievance through EPFiGMS. Ask EPFO to check why your bank KYC verification is taking longer than the typical turnaround and confirm its status directly." |
 
-**Caveat to show inline, briefly:** this 15-day cutoff is the one number backed by an actual EPFO rule (Field Offices can step in after 15 days). The 0–7 and 8–15 bands are built from secondary sources, not EPFO's own Citizen Charter, which was unreachable during this research (see Section 9, gap 1).
+**Caveat to show inline, briefly:** these bands are a reasoned estimate off EPFO's own stated ~3-working-day average for bank/NPCI verification, not an EPFO-published band table — EPFO's own Citizen Charter remains unreachable to check against (see Section 9, gap 1). No band or fix mentions the employer — that step no longer exists in this process.
 
 ### Code 4 — EPS (pension) discrepancy
 
@@ -224,13 +226,15 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 
 ### Variant B — bank KYC, escalation band only (Code 3, wait-time Band 3)
 
+**Re-anchored 2026-08-31 (ticket 13):** no longer references employer approval — see Section 3's Code 3 note.
+
 > Subject: Grievance regarding unverified bank KYC — Claim ID {CLAIM_ID}
 >
-> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}) is blocked because my bank KYC is not verified. I submitted my bank KYC on {bank_kyc_submission_date}, more than 15 working days ago. Under EPFO's own rule, its Field Office may verify bank KYC directly if the employer has not done so within 15 days. I request EPFO's Field Office to verify my bank KYC directly and resettle my claim.
+> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}) is blocked because my bank KYC is not verified. I submitted my bank KYC on {bank_kyc_submission_date}. This has taken longer than the typical bank/NPCI verification turnaround. I request EPFO to check the status of my bank KYC verification directly and resettle my claim.
 >
 > {DEADLINE_CITATION, if applicable}
 
-*(For Bands 1 and 2, no grievance is generated — the recommended action is to wait or to contact the employer, not to file a grievance yet.)*
+*(For Bands 1 and 2, no grievance is generated — the recommended action is to wait or check with your bank directly, not to file a grievance yet.)*
 
 ### Variant C — portal sync bug (Code 1, `namedob_kyc_page_status = approved_and_verified`)
 

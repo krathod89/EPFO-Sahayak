@@ -86,7 +86,11 @@ describe("buildGrievance — Variant A (standard)", () => {
 });
 
 describe("buildGrievance — Variant B (bank KYC escalation)", () => {
-  it("builds escalation text only for band 3", () => {
+  // Ticket 13 (2026-08-31): EPFO's April 2025 order removed employer approval from bank-KYC
+  // seeding — the old text asked EPFO's Field Office to act "since the employer has not
+  // completed this within 15 working days." That premise no longer holds, so the grievance
+  // must not reference an employer approval step at all.
+  it("builds escalation text only for band 3, with no employer-approval framing", () => {
     const result = buildGrievance({
       ...base,
       kind: { type: "bank_kyc_escalate", band: 3, bank_kyc_submission_date: "2026-06-01" },
@@ -94,7 +98,8 @@ describe("buildGrievance — Variant B (bank KYC escalation)", () => {
     expect(result.ready).toBe(true);
     if (result.ready) {
       expect(result.variant).toBe("B");
-      expect(result.body).toMatch(/more than 15 working days/);
+      expect(result.body).not.toMatch(/employer/i);
+      expect(result.body).toMatch(/longer than the typical/i);
     }
   });
 
@@ -109,7 +114,10 @@ describe("buildGrievance — Variant B (bank KYC escalation)", () => {
     });
     expect(band1.ready).toBe(false);
     expect(band2.ready).toBe(false);
-    if (!band1.ready) expect(band1.reason).toBe("not_applicable");
+    if (!band1.ready) {
+      expect(band1.reason).toBe("not_applicable");
+      if (band1.reason === "not_applicable") expect(band1.note).not.toMatch(/employer/i);
+    }
   });
 });
 

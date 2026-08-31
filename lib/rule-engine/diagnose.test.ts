@@ -60,10 +60,23 @@ describe("diagnose — Code 3 wait-time bands", () => {
       bank_kyc_submission_date: "2026-08-27",
     });
     expect(result.entries[0]!.meta).toMatchObject({ band: 1 });
-    expect(result.entries[0]!.explanation).toMatch(/normal wait/);
+    expect(result.entries[0]!.explanation).toMatch(/typical.*turnaround/);
   });
 
-  it("computes band 3 and an escalate-worthy message for a long-pending submission", () => {
+  // Ticket 13 (2026-08-31): band 2's fix used to tell the citizen to chase their employer's
+  // approval — EPFO's April 2025 order removed that step entirely. Confirms the corrected
+  // copy neither instructs that nor mentions an employer at all.
+  it("computes band 2 without any employer-approval instruction", () => {
+    const result = diagnose({
+      codes: ["CODE_3_BANK_KYC"],
+      today_date: "2026-08-29",
+      bank_kyc_submission_date: "2026-08-20", // 6 working days before 2026-08-29
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ band: 2 });
+    expect(result.entries[0]!.fix).not.toMatch(/employer/i);
+  });
+
+  it("computes band 3 and an escalate-worthy message for a long-pending submission, with no employer-approval framing", () => {
     const result = diagnose({
       codes: ["CODE_3_BANK_KYC"],
       today_date: "2026-08-29",
@@ -71,6 +84,10 @@ describe("diagnose — Code 3 wait-time bands", () => {
     });
     expect(result.entries[0]!.meta).toMatchObject({ band: 3 });
     expect(result.entries[0]!.fix).toMatch(/Raise a grievance/);
+    // The fix (the actionable instruction) must never send the citizen to chase an employer —
+    // that was the actual bug. The shared intro deliberately still names "employer" once, to
+    // debunk the exact misconception EPFO's own April 2025 order was meant to end.
+    expect(result.entries[0]!.fix).not.toMatch(/employer/i);
   });
 
   it("throws if Code 3 is selected without a submission date", () => {

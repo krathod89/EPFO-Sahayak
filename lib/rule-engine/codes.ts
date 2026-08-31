@@ -99,26 +99,36 @@ export const CODE_1_BRANCHES = {
   },
 } satisfies Record<string, ExplanationAndFix>;
 
-/** Code 3's shared opening explanation, shown before the band-specific text (spec Section 3, Code 3). */
+/** Code 3's shared opening explanation, shown before every band's text (spec Section 3, Code 3) —
+ * every band's rendered `explanation` includes this verbatim (see `resolveCode3` in diagnose.ts).
+ * This is the ONE sanctioned place Code 3's copy names the employer (ticket 13) — deliberately,
+ * to debunk the exact old-process misconception the April 2025 order was meant to end. It's
+ * unconditional (not gated on `bank_kyc_submission_date`) because the same order auto-approved
+ * every request already pending with an employer at the time it took effect — there is no case
+ * this tool would diagnose today (well over a year later) where employer approval is still the
+ * live blocker. See waitBands.ts for the full citation. */
 export const CODE_3_INTRO =
-  "EPFO must confirm that your bank account number, IFSC code, and account-holder name all match your other records before it can pay you. If any of these does not match, or the check is still in progress, your claim cannot move forward — even if every other part of it is approved.";
+  "EPFO must confirm that your bank account number, IFSC code, and account-holder name all match your other records before it can pay you. Your bank and NPCI verify this directly — since April 2025, your employer's approval is no longer part of this step. If the check is still in progress, or something doesn't match, your claim cannot move forward — even if every other part of it is approved.";
 
-/** Code 3's per-band text. `{X}` is the working-day count, substituted at render time. */
+/** Code 3's per-band text. `{X}` is the working-day count, substituted at render time.
+ * Re-anchored 2026-08-31 (ticket 13) to the post-April-2025 process — see waitBands.ts for
+ * the full citation. Unlike CODE_3_INTRO above, no band's `explanation` or `fix` mentions the
+ * employer — there's no employer-facing action left to instruct. */
 export const CODE_3_BANDS: Record<1 | 2 | 3, ExplanationAndFix> = {
   1: {
     explanation:
-      "You submitted your bank KYC {X} working days ago. This is still within the normal wait. No action is needed yet.",
+      "You submitted your bank KYC {X} working days ago. This is still within the typical bank/NPCI verification turnaround. No action is needed yet.",
     fix: "No action needed. Check back after a few more working days.",
   },
   2: {
     explanation:
-      "You submitted your bank KYC {X} working days ago. This is at the edge of the normal wait. It is worth checking, but not yet clearly stuck.",
-    fix: "Contact your employer's HR or PF team and ask if they have approved your KYC request on their end. If they have, and it still shows unverified, check again in a few more days.",
+      "You submitted your bank KYC {X} working days ago. This is longer than the typical turnaround. It is worth checking, but not yet clearly stuck.",
+    fix: "Contact your bank to confirm your account number, IFSC code, and account-holder name were submitted correctly. If everything on their end looks correct and it still shows unverified, check again in a few more days.",
   },
   3: {
     explanation:
-      "You submitted your bank KYC {X} working days ago. EPFO's own rule lets its Field Offices verify your KYC directly if your employer has not done so within 15 days. You have passed this point. It is time to escalate.",
-    fix: "Raise a grievance through EPFiGMS. Ask EPFO's Field Office to verify your bank KYC directly, since your employer has not completed this within 15 working days.",
+      "You submitted your bank KYC {X} working days ago. This is well beyond the typical bank/NPCI verification turnaround. It is worth escalating.",
+    fix: "Raise a grievance through EPFiGMS. Ask EPFO to check why your bank KYC verification is taking longer than the typical turnaround and confirm its status directly.",
   },
 };
 
@@ -132,7 +142,7 @@ export const CODE_7_OPENING =
  * band 1-2 guidance, since the spec only says "show the general explanation," not a fix. */
 export const CODE_3_GENERAL: ExplanationAndFix = {
   explanation: CODE_3_INTRO,
-  fix: "Contact your employer's HR or PF team to confirm your bank KYC has been submitted and approved on their end. If it has been pending a long time with no update, raise a grievance through EPFiGMS asking EPFO's Field Office to verify it directly.",
+  fix: "Contact your bank to confirm your KYC details were submitted correctly. If it has been pending a long time with no update, raise a grievance through EPFiGMS asking EPFO to verify it directly.",
 };
 
 export const CODE_7_ALL_CLEAN: ExplanationAndFix = {
