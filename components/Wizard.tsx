@@ -1241,8 +1241,9 @@ export default function Wizard() {
             <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Bank KYC not verified</p>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">When did you submit your bank KYC?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              This is the date you submitted your bank details for verification on the UAN portal or through your employer. An
-              approximate date is fine.
+              This is the date your bank details were submitted for verification — either by you on the UAN portal, or entered by
+              your employer on your behalf. Verification itself is done by your bank and NPCI, not your employer. An approximate
+              date is fine.
             </p>
           </div>
 

@@ -138,8 +138,8 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
         });
       }
       // Else: the primary issue is Code 3 (bank KYC) with no submission date collected —
-      // no grievance variant applies yet (see kindForSelfCheckIssue). The citizen sees the
-      // reused fix text (contact HR) and should follow that first.
+      // no grievance variant applies yet (see kindForSelfCheckIssue). The citizen sees
+      // CODE_3_GENERAL's fix text (contact your bank — ticket 13) and should follow that first.
     }
     // Else: only unsure items were found, nothing conclusive — nothing to escalate yet.
   } else if (diagnosableSelected.length > 0) {

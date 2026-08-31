@@ -13,7 +13,9 @@ export type GrievanceVariant = "A" | "B" | "C" | "D" | "E";
 
 type VariantKind =
   | { type: "standard"; codeName: string; issueSentence: string } // Variant A — Codes 1 (standard branch), 2, 4, 5
-  | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: ISODate } // Variant B — Code 3, band 3 only
+  | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: ISODate } // Variant B — Code 3, band 3 only.
+    // Text re-anchored 2026-08-31 (ticket 13): no longer references employer approval —
+    // EPFO's April 2025 order removed that step from bank-KYC seeding. See waitBands.ts.
   | { type: "portal_sync_bug" } // Variant C — Code 1, portal-sync-bug branch
   | { type: "approved_not_credited" } // Variant D — Code 6
   | { type: "demand_reason" }; // Variant E — Code 7, all self-checks clean
@@ -53,13 +55,13 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
       if (kind.band !== 3) {
         return {
           notApplicable:
-            "No grievance is generated for wait-time bands 1-2 — the recommended action is to wait or contact the employer, not to file a grievance yet (Rule Engine Spec.md Section 6, Variant B).",
+            "No grievance is generated for wait-time bands 1-2 — the recommended action is to wait or check with your bank directly, not to file a grievance yet (Rule Engine Spec.md Section 6, Variant B).",
         };
       }
       return {
         variant: "B",
         subject: `Grievance regarding unverified bank KYC — Claim ID ${claim_id}`,
-        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}) is blocked because my bank KYC is not verified. I submitted my bank KYC on ${kind.bank_kyc_submission_date}, more than 15 working days ago. Under EPFO's own rule, its Field Office may verify bank KYC directly if the employer has not done so within 15 days. I request EPFO's Field Office to verify my bank KYC directly and resettle my claim.`,
+        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}) is blocked because my bank KYC is not verified. I submitted my bank KYC on ${kind.bank_kyc_submission_date}. This has taken longer than the typical bank/NPCI verification turnaround. I request EPFO to check the status of my bank KYC verification directly and resettle my claim.`,
       };
 
     case "portal_sync_bug":

@@ -18,18 +18,24 @@ describe("workingDaysBetween", () => {
 });
 
 describe("bankKycWaitBand", () => {
-  it("bands 0-7 working days as band 1", () => {
+  // Re-anchored 2026-08-31 (ticket 13): EPFO's April 2025 order removed the employer-approval
+  // step from bank-KYC seeding entirely (bank/NPCI verification, ~3 working days average, then
+  // auto-approval — no employer gate to wait on). The old 0-7/8-15/>15 bands were built around
+  // employer approval's own ~13-day average, which no longer applies. These bands are now
+  // anchored to the *current* process's stated average, with a buffer — an estimate, not an
+  // EPFO-published figure, same caveat status the old bands carried.
+  it("bands 0-5 working days as band 1 (within the typical bank/NPCI turnaround)", () => {
     expect(bankKycWaitBand(0).band).toBe(1);
-    expect(bankKycWaitBand(7).band).toBe(1);
+    expect(bankKycWaitBand(5).band).toBe(1);
   });
 
-  it("bands 8-15 working days as band 2", () => {
-    expect(bankKycWaitBand(8).band).toBe(2);
-    expect(bankKycWaitBand(15).band).toBe(2);
+  it("bands 6-10 working days as band 2 (longer than typical, not yet clearly stuck)", () => {
+    expect(bankKycWaitBand(6).band).toBe(2);
+    expect(bankKycWaitBand(10).band).toBe(2);
   });
 
-  it("bands more than 15 working days as band 3", () => {
-    expect(bankKycWaitBand(16).band).toBe(3);
+  it("bands more than 10 working days as band 3 (worth escalating)", () => {
+    expect(bankKycWaitBand(11).band).toBe(3);
     expect(bankKycWaitBand(100).band).toBe(3);
   });
 });
