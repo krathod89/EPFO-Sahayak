@@ -40,7 +40,8 @@ export type VariantKind =
   | { type: "approved_not_credited" } // Variant D — Code 6
   | { type: "demand_reason" } // Variant E — Code 7, all self-checks clean
   | { type: "joint_account" } // No grievance variant — Code 3, joint-account branch (ticket 15). Always not_applicable; see buildVariantContent.
-  | { type: "eligibility" }; // No grievance variant — Code 8 (ticket 16). Always not_applicable — a genuine eligibility rule can't be overridden by a grievance.
+  | { type: "eligibility" } // No grievance variant — Code 8 (ticket 16). Always not_applicable — a genuine eligibility rule can't be overridden by a grievance.
+  | { type: "wrong_form" }; // No grievance variant — Code 9 (ticket 17). Always not_applicable — the fix is refiling under the correct form, not escalating.
 
 export interface GrievanceRequest {
   uan: string;
@@ -80,6 +81,8 @@ function suggestedCategoryFor(kind: VariantKind): SuggestedCategory {
         return "CODE_7_NO_REASON";
       case "eligibility":
         return "CODE_8_ELIGIBILITY";
+      case "wrong_form":
+        return "CODE_9_WRONG_FORM";
     }
   })();
   return SUGGESTED_CATEGORY_BY_CODE[code];
@@ -126,6 +129,12 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
           "No grievance is generated for an eligibility rejection — a genuine service-length rule can't be overridden by filing a grievance. See the fix text above for the actual next step (Rule Engine Spec.md Section 6).",
       };
 
+    case "wrong_form":
+      return {
+        notApplicable:
+          "No grievance is generated for a wrong-form-filed rejection — the fix is refiling under the correct form, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
+      };
+
     case "portal_sync_bug":
       return {
         variant: "C",
@@ -150,15 +159,22 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
 }
 
 export function buildGrievance(request: GrievanceRequest): GrievanceOutput {
-  const missing: ("uan" | "claim_id")[] = [];
-  if (!request.uan) missing.push("uan");
-  if (!request.claim_id) missing.push("claim_id");
-  if (missing.length > 0) return { ready: false, reason: "missing_info", missing };
-
+  // not_applicable is checked BEFORE missing_info, not after: whether a grievance can ever
+  // exist for this kind (wait bands 1-2, joint_account, eligibility, wrong_form) is a function
+  // of the diagnosed kind alone, not of whether uan/claim_id happen to be filled in yet. The
+  // old order surfaced a misleading intermediate "missing_info" state for these kinds — a
+  // second code-review pass on ticket 17 traced this back from a Wizard.tsx UI symptom
+  // (diagnosisSummary/grievanceOutput unconditionally promising "grievance text" even when the
+  // situation could never produce one) to this ordering being the actual root cause.
   const content = buildVariantContent(request);
   if ("notApplicable" in content) {
     return { ready: false, reason: "not_applicable", note: content.notApplicable };
   }
+
+  const missing: ("uan" | "claim_id")[] = [];
+  if (!request.uan) missing.push("uan");
+  if (!request.claim_id) missing.push("claim_id");
+  if (missing.length > 0) return { ready: false, reason: "missing_info", missing };
 
   const citation = deadlineCitation(request.deadline, request.filing_date);
   const body = citation ? `${content.core}\n\n${citation}` : content.core;

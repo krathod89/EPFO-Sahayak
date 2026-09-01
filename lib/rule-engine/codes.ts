@@ -1,4 +1,4 @@
-// The 7 rejection/failure codes and their plain-language copy.
+// The 9 rejection/failure codes and their plain-language copy.
 // Source of truth: Rule Engine/Rule Engine Spec.md, Section 3. Copy is reused verbatim
 // from that spec (already drafted plain-language text), not rewritten here.
 // See Engineering/ADR/0003-rule-content-as-versioned-code.md for why this lives in code.
@@ -60,6 +60,12 @@ export const CODE_DEFINITIONS: Record<RuleCode, CodeDefinition> = {
     trigger:
       "Matches EPFO remarks about a service-length eligibility rule not being met — under 6 months of service for Form 10C, or more than 9.5 years of service (which routes to a monthly pension claim instead of a lump-sum withdrawal).",
   },
+  CODE_9_WRONG_FORM: {
+    code: "CODE_9_WRONG_FORM",
+    name: "Wrong claim form filed",
+    trigger:
+      "Matches EPFO remarks stating the claim was filed under the wrong form for the citizen's actual situation — e.g. Form 19 filed when Form 10C's pension withdrawal fits, or vice versa.",
+  },
 };
 
 export interface ExplanationAndFix {
@@ -91,10 +97,11 @@ export const SUGGESTED_CATEGORY_BY_CODE: Record<RuleCode, SuggestedCategory> = {
   CODE_5_OLD_CLAIM: "PF Withdrawal",
   CODE_6_APPROVED_NOT_CREDITED: "PF Withdrawal",
   CODE_7_NO_REASON: "PF Withdrawal",
-  // Never actually surfaced to a citizen — Code 8 (ticket 16) never generates a grievance in
-  // any of its 3 branches, so this entry exists only to satisfy the exhaustive Record above.
-  // "PF Withdrawal" is the least-wrong placeholder if that ever changes.
+  // Never actually surfaced to a citizen — Codes 8 (ticket 16) and 9 (ticket 17) never
+  // generate a grievance in any branch, so these entries exist only to satisfy the exhaustive
+  // Record above. "PF Withdrawal" is the least-wrong placeholder if that ever changes.
   CODE_8_ELIGIBILITY: "PF Withdrawal",
+  CODE_9_WRONG_FORM: "PF Withdrawal",
 };
 
 /** Caveat shown alongside `suggestedCategory` — must always accompany it; the hint is never
@@ -210,6 +217,33 @@ export const CODE_8_BRANCHES = {
     explanation:
       "EPFO's remark points to a service-length eligibility rule, but which one applies changes the fix — under 6 months of service, or over 9.5 years. We can't tell which from what's been entered here.",
     fix: "Check your exact service length on the UAN portal's service history page. If it's under 6 months, wait and refile Form 10C once eligible. If it's over 9.5 years, file Form 10D for a monthly pension instead — Form 10C will keep being rejected past that point either way.",
+  },
+} satisfies Record<string, ExplanationAndFix>;
+
+/** Code 9's four branches (ticket 17, ~2026-09-01) — same treatment as Code 8: never framed
+ * as "not your fault" (this is a filing-choice case, not a records mismatch), and `unsure`
+ * gets its own honest branch rather than guessing, since many citizens don't clearly
+ * distinguish "my PF" from "my EPS/pension" and a wrong guess here recommends the wrong form. */
+export const CODE_9_BRANCHES = {
+  full_settlement: {
+    explanation:
+      "You're trying to withdraw your full PF balance after leaving your job. That calls for Form 19, not Form 10C or Form 31. This is a form-selection issue, not a records mismatch.",
+    fix: "Refile using Form 19. If Form 19 is also rejected, check the specific remark it gives — that may point to a different, unrelated issue (a records mismatch or eligibility rule) rather than this one.",
+  },
+  pension_only: {
+    explanation:
+      "You're trying to withdraw only your pension (EPS) balance, not your full PF. That calls for Form 10C, not Form 19 or Form 31. Note: Form 10C has its own eligibility conditions — at least 6 months of service, and a different process past 9.5 years of service.",
+    fix: "Refile using Form 10C. If Form 10C is then rejected for a service-length reason, that's a separate eligibility issue, not a wrong-form one — check the specific remark it gives.",
+  },
+  advance: {
+    explanation:
+      "You're trying to withdraw an advance while still employed — for example, for medical, housing, or education expenses. That calls for Form 31, not Form 19 or Form 10C.",
+    fix: "Refile using Form 31, selecting the reason that matches your actual purpose (medical, housing, education, etc.) — different reasons have different supporting-document requirements.",
+  },
+  unsure: {
+    explanation:
+      "EPFO's remark points to a wrong-form-filed issue, but which form actually fits depends on what you're trying to withdraw. Form 19 is your full PF balance after leaving a job. Form 10C is only your pension (EPS) balance. Form 31 is an advance while still employed.",
+    fix: "Pick whichever of the three matches what you're actually trying to do, then refile under that form. If you're not sure whether you want your full balance or just the pension portion, your UAN portal's passbook shows both components separately.",
   },
 } satisfies Record<string, ExplanationAndFix>;
 

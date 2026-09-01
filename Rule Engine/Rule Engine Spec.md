@@ -11,7 +11,7 @@
 The rule engine takes a citizen's own report of their EPFO Provident Fund claim — the rejection remark EPFO showed them, or the state of their KYC and claim records before they file — and turns it into a plain-language diagnosis and a ready-to-use next step. It has **two entry points**: the **post-rejection decoder** (the citizen already has a rejection) and the **pre-filing readiness check** (the citizen has not filed yet, and wants to check first). Both entry points share the same underlying rule library.
 
 The engine has **four core functions**:
-1. **Diagnose** — match what the citizen reports to one of 6 known rejection/failure codes (or a 7th "no reason given" fallback), and explain it in plain language.
+1. **Diagnose** — match what the citizen reports to one of 6 known rejection/failure codes (a 7th "no reason given" fallback, or an 8th/9th — eligibility, wrong form — added in tickets 16/17), and explain it in plain language.
 2. **Prioritize** — when the citizen reports more than one code at once, rank them so the citizen fixes the real blocker first, not a secondary one (H10).
 3. **Check deadline and penalty** — compare the citizen's filing date against EPFO's 3-day or 20-day settlement rule, and flag a missed deadline and its 12% penalty (H11).
 4. **Generate grievance text** — produce ready-to-paste EPFiGMS grievance text, tailored to the diagnosed code and citing the missed deadline when one applies (H13).
@@ -26,7 +26,7 @@ The engine has **four core functions**:
 | `uan` | string (UAN, typically 12 digits) | Optional for diagnosis only; **Required** to generate grievance text | Used to fill the grievance template. |
 | `claim_id` | string | Optional for diagnosis only; **Required** to generate grievance text | Used to fill the grievance template. |
 | `claim_type` | enum: `Form 19`, `Form 10C`, `Form 31`, `unsure` | Optional | Context only. Not used for branching — the exact claim-type eligibility conditions for the 3-day settlement rule are not yet confirmed (see Section 9, gap 2). |
-| `rejection_codes_selected` | set of enum: `code1`…`code7`, `code8` | **Required** for `post_rejection` | Multi-select. See Section 3 for code definitions. `code6`, `code7`, and `code8` (ticket 16) cannot be selected alongside another code, or each other (see Section 4). |
+| `rejection_codes_selected` | set of enum: `code1`…`code9` | **Required** for `post_rejection` | Multi-select. See Section 3 for code definitions. `code6`, `code7`, `code8` (ticket 16), and `code9` (ticket 17) cannot be selected alongside another code, or each other (see Section 4). |
 | `filing_date` | date | **Required** for `post_rejection` (feeds H11 check) | The date the citizen filed the claim now under review. |
 | `kyc_complete_at_filing` | boolean | **Required** for `post_rejection` (feeds H11 check) | Citizen-reported: was their KYC complete when they filed? Drives the 3-day vs. 20-day branch. |
 | `today_date` | date | System-provided | Not entered by the citizen. |
@@ -34,7 +34,8 @@ The engine has **four core functions**:
 | `bank_account_type` | enum: `individual`, `joint`, `unsure` | **Required if `code3` selected** (ticket 15, 2026-08-31) | Answers Code 3's joint-account branching sub-question (Section 3, Code 3). `joint` skips the wait-time check entirely — a joint account is a hard rejection independent of timing. |
 | `bank_kyc_submission_date` | date | **Required if `code3` selected AND `bank_account_type` is not `joint`** | Feeds the 3-band wait-time check in Section 3, Code 3. Not needed for a joint-account rejection. |
 | `eligibility_issue_type` | enum: `under_six_months`, `over_nine_half_years`, `unsure` | **Required if `code8` selected** (ticket 16, ~2026-09-01) | Answers Code 8's branching sub-question (Section 3, Code 8). The two named thresholds have opposite remedies, so `unsure` gets its own branch rather than defaulting to either. |
-| `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across both cases (Section 3, Code 7; Section 7). Not extended to cover Code 8 (ticket 16) — out of scope for that ticket. |
+| `withdrawal_intent` | enum: `full_settlement`, `pension_only`, `advance`, `unsure` | **Required if `code9` selected** (ticket 17, ~2026-09-01) | Answers Code 9's branching sub-question (Section 3, Code 9) — what the citizen is actually trying to withdraw, not which form they filed. The three intents point to different forms, so `unsure` gets its own branch rather than guessing. |
+| `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across both cases (Section 3, Code 7; Section 7). Not extended to cover Code 8 (ticket 16) or Code 9 (ticket 17) — out of scope for both tickets. |
 
 **The 5-item self-check checklist** (used by Code 7 and by the pre-filing entry point — same fields, same logic):
 - `doe_marked` — "Is your Date of Exit marked?"
@@ -164,11 +165,36 @@ Each row: trigger, plain-language explanation copy (draft), recommended fix, and
 
 **Not extended to the self-check checklist or pre-filing flow** — out of scope for this ticket; Codes 1–5 and 7 remain the only codes reachable via Code 7's fallback or the pre-filing readiness check.
 
+### Code 9 — Wrong claim form filed (ticket 17, ~2026-09-01)
+
+**Trigger:** matches EPFO remarks stating the claim was filed under the wrong form for the citizen's actual situation — e.g. Form 19 filed when Form 10C's pension withdrawal fits, or vice versa. Confirmed as a real, tracked rejection remark (not a pre-submission block) via multiple sources — same mechanism as every other code.
+
+**Framing, same rule as Code 8:** a user-error case (which form to file), not a records-disagree-with-each-other case — the copy says plainly which form fits, without implying EPFO made a mistake, and does not claim "not your fault."
+
+**Branching sub-question:** `withdrawal_intent` — what is the citizen actually trying to withdraw, not which form they already filed. The three intents point to different forms with no overlap, so `unsure` is a real fourth branch — many citizens don't clearly distinguish "my PF" from "my EPS/pension," and a wrong guess here recommends the wrong form.
+
+| Branch | Explanation | Fix |
+|---|---|---|
+| `full_settlement` | "You're trying to withdraw your full PF balance after leaving your job. That calls for Form 19, not Form 10C or Form 31. This is a form-selection issue, not a records mismatch." | "Refile using Form 19. If Form 19 is also rejected, check the specific remark it gives — that may point to a different, unrelated issue (a records mismatch or eligibility rule) rather than this one." |
+| `pension_only` | "You're trying to withdraw only your pension (EPS) balance, not your full PF. That calls for Form 10C, not Form 19 or Form 31. Note: Form 10C has its own eligibility conditions — at least 6 months of service, and a different process past 9.5 years of service." | "Refile using Form 10C. If Form 10C is then rejected for a service-length reason, that's a separate eligibility issue, not a wrong-form one — check the specific remark it gives." |
+| `advance` | "You're trying to withdraw an advance while still employed — for example, for medical, housing, or education expenses. That calls for Form 31, not Form 19 or Form 10C." | "Refile using Form 31, selecting the reason that matches your actual purpose (medical, housing, education, etc.) — different reasons have different supporting-document requirements." |
+| `unsure` | "EPFO's remark points to a wrong-form-filed issue, but which form actually fits depends on what you're trying to withdraw. Form 19 is your full PF balance after leaving a job. Form 10C is only your pension (EPS) balance. Form 31 is an advance while still employed." | "Pick whichever of the three matches what you're actually trying to do, then refile under that form. If you're not sure whether you want your full balance or just the pension portion, your UAN portal's passbook shows both components separately." |
+
+**Cross-consistency with Code 8:** the `pension_only` branch explicitly names Form 10C's eligibility conditions (6-month minimum, 9.5-year threshold) so the two codes' copy stays consistent rather than silently duplicating or contradicting each other if a citizen hits both in sequence (wrong form first, then genuinely ineligible for the corrected one).
+
+**Exclusivity:** mutually exclusive with every other code, including Codes 6, 7, and 8 (Section 4) — a wrong-form-filed rejection isn't "also" a records mismatch.
+
+**Deadline check:** suppressed entirely for this code (Section 5), same reasoning as Code 8 — a claim filed under the wrong form was never going to be settled under that form regardless of the 3/20-day clock.
+
+**Grievance:** never applicable (Section 6) — the fix is refiling under the correct form, not escalating.
+
+**Not extended to the self-check checklist or pre-filing flow, and not a general pre-filing form-picker** — out of scope for this ticket. This code only fires once a citizen already has a rejection remark pointing at wrong-form selection.
+
 ---
 
 ## 4. Priority-Check Logic (H10)
 
-Applies only when `rejection_codes_selected` contains **2 or more** of Codes 1, 2, 3, 4, 5. (Codes 6, 7, and 8 (ticket 16) are mutually exclusive with the other codes at the UI level — a claim cannot be simultaneously "rejected with reason X" and "approved but not credited," "no reason given," or "ineligible.")
+Applies only when `rejection_codes_selected` contains **2 or more** of Codes 1, 2, 3, 4, 5. (Codes 6, 7, 8 (ticket 16), and 9 (ticket 17) are mutually exclusive with the other codes at the UI level — a claim cannot be simultaneously "rejected with reason X" and "approved but not credited," "no reason given," "ineligible," or "wrong form filed.")
 
 **The two tiers, from PRD §7a item 2:**
 - **Tier 1 — blocks eligibility first:** Code 2 (Date of Exit not marked), Code 5 (old claim pending). These are checked earlier in EPFO's process — a claim cannot even be considered eligible for processing until these clear.
@@ -208,7 +234,7 @@ function prioritize(selected_codes: Set<Code>) -> ordered result:
 
 ## 5. Deadline / Penalty Check Logic (H11)
 
-Runs whenever `entry_point = post_rejection` and `filing_date` + `kyc_complete_at_filing` are provided — **except Code 8 (ticket 16), where it is skipped entirely.** An ineligible claim was never going to be settled regardless of the 3/20-day clock, so showing "EPFO missed its deadline, you're owed a penalty" would be actively misleading for this code, not just unused. For every other code it is independent of which code(s) were selected — it always runs, and its result is appended to whichever diagnosis/priority output the citizen already saw.
+Runs whenever `entry_point = post_rejection` and `filing_date` + `kyc_complete_at_filing` are provided — **except Codes 8 and 9 (tickets 16/17), where it is skipped entirely.** Neither an ineligible claim nor a claim filed under the wrong form was ever going to be settled regardless of the 3/20-day clock, so showing "EPFO missed its deadline, you're owed a penalty" would be actively misleading for these codes, not just unused. Declared once as `DEADLINE_SUPPRESSED_CODES` (types.ts), not a hand-added check per code — a code-review pass on ticket 16 flagged the per-code special-casing as the point where a declarative list starts paying for itself, once ticket 17 became the 2nd suppressed code. For every other code it is independent of which code(s) were selected — it always runs, and its result is appended to whichever diagnosis/priority output the citizen already saw.
 
 **Caveat carried into this logic:** the source states "3 days (complete KYC)" and "20 days (otherwise)" without specifying whether these are calendar days or working days (unlike the Code 3 wait-time bands, which are explicitly "working days"). This spec treats them as **calendar days**, matching how the rule is generally described in news coverage, but this is an assumption, not a confirmed detail — flagged in Section 9, gap 6.
 
@@ -273,6 +299,12 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 **Joint account (ticket 15) — also no grievance generated, for a different reason.** Unlike bands 1–2 (not stuck *yet*), a joint-account rejection is never an EPFO error to escalate — the fix is entirely on the citizen's side (open an individual account). The "not applicable" note for this case: *"No grievance is generated for a joint-account rejection — the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO."*
 
 **Code 8, eligibility (ticket 16) — no grievance generated, for any of its 3 branches.** A genuine eligibility rule can't be overridden by filing a grievance. The "not applicable" note: *"No grievance is generated for an eligibility rejection — a genuine service-length rule can't be overridden by filing a grievance. See the fix text above for the actual next step."*
+
+**Code 9, wrong form filed (ticket 17) — no grievance generated, for any of its 4 branches.** The fix is refiling under the correct form, not escalating with EPFO. The "not applicable" note: *"No grievance is generated for a wrong-form-filed rejection — the fix is refiling under the correct form, not something to escalate with EPFO."*
+
+**Both Codes 8 and 9 (and Code 3's joint-account branch) share the same shape now**: exclusive code, one fixed grievance kind regardless of internal branch, always `not_applicable`. `index.ts`'s `EXCLUSIVE_CODE_GRIEVANCE_KIND` table (generalized on ticket 17, alongside Code 6) is the single dispatch point — see Section 5's deadline-suppression note for the parallel history on why this became a table instead of more hand-added branches.
+
+**`not_applicable` is checked before `missing_info`, not after (fixed on ticket 17's second review pass).** Whether a grievance can ever exist for a given kind (wait bands 1–2, joint account, eligibility, wrong form) depends only on the diagnosed kind, not on whether the citizen has typed a UAN/Claim ID yet. Checking `missing_info` first — the original order — surfaced a misleading intermediate state: the wizard would show "Generate grievance text" and, after the citizen filled in both fields, only then reveal that no grievance was ever going to exist. `buildGrievance()` now resolves `not_applicable` first, so `Wizard.tsx` can (and does) know this immediately, before either field is filled in.
 
 ### Variant C — portal sync bug (Code 1, `namedob_kyc_page_status = approved_and_verified`)
 
@@ -352,10 +384,22 @@ flowchart TD
     A["Citizen opens decoder: post-rejection"] --> B{"Select rejection remark(s) EPFO showed"}
     B -->|"Codes 1-6, one or more"| C{"More than one code selected?"}
     B -->|"Code 7: I don't see a reason"| D["Run 5-item self-check"]
+    B -->|"Code 8: eligibility/service-period issue"| CE["Ask eligibility issue type -
+    under 6 months / over 9.5 years / unsure (ticket 16)"]
+    B -->|"Code 9: wrong form filed"| CG["Ask withdrawal intent -
+    full settlement / pension only / advance / unsure (ticket 17)"]
 
     D -->|"Issue found on a check"| E["Route to that code's explanation + fix"]
     D -->|"All checks clean"| F["Prepare Variant E: demand the real reason"]
     D -->|"Any check unsure"| DU["Tell citizen which item to double-check first"]
+
+    CE --> CF["Show branch-specific explanation + fix -
+    Section 3, Code 8"]
+    CG --> CH["Show branch-specific explanation + fix -
+    Section 3, Code 9"]
+    CF --> X["No deadline check, no grievance -
+    reason: not_applicable (Section 5, Section 6)"]
+    CH --> X
 
     C -->|"Yes"| G["Apply priority ranking - Section 4:
     Tier 1 (Code 2, Code 5) before Tier 2 (Code 3, Code 1);

@@ -3,7 +3,7 @@
 
 export type EntryPoint = "post_rejection" | "pre_filing";
 
-/** The 8 selectable rejection/failure codes (spec Section 3). */
+/** The 9 selectable rejection/failure codes (spec Section 3). */
 export type RuleCode =
   | "CODE_1_NAME_DOB"
   | "CODE_2_DOE"
@@ -12,15 +12,31 @@ export type RuleCode =
   | "CODE_5_OLD_CLAIM"
   | "CODE_6_APPROVED_NOT_CREDITED"
   | "CODE_7_NO_REASON"
-  | "CODE_8_ELIGIBILITY";
+  | "CODE_8_ELIGIBILITY"
+  | "CODE_9_WRONG_FORM";
 
 /** Codes that can't be combined with anything else, including each other (spec Section 4) —
  * a claim can't be simultaneously "rejected with reason X" and "approved but not credited,"
- * "no reason given," or "ineligible." Single source of truth, imported by both `schema.ts`
- * (server-side validation) and `Wizard.tsx` (client-side selection UI) — ticket 16's own
- * code-review pass found these hand-maintained as two separate literal arrays, one per layer,
- * risking exactly the client/server drift a shared constant exists to prevent. */
-export const MUTUALLY_EXCLUSIVE_CODES: RuleCode[] = ["CODE_6_APPROVED_NOT_CREDITED", "CODE_7_NO_REASON", "CODE_8_ELIGIBILITY"];
+ * "no reason given," "ineligible," or "wrong form filed." Single source of truth, imported by
+ * both `schema.ts` (server-side validation) and `Wizard.tsx` (client-side selection UI) —
+ * ticket 16's own code-review pass found these hand-maintained as two separate literal
+ * arrays, one per layer, risking exactly the client/server drift a shared constant exists to
+ * prevent. */
+export const MUTUALLY_EXCLUSIVE_CODES: RuleCode[] = [
+  "CODE_6_APPROVED_NOT_CREDITED",
+  "CODE_7_NO_REASON",
+  "CODE_8_ELIGIBILITY",
+  "CODE_9_WRONG_FORM",
+];
+
+/** Codes for which the deadline/penalty check (H11) is deliberately suppressed, not just
+ * unused — the claim was never going to be "settled" under the 3/20-day clock regardless,
+ * since it was never a valid claim in this shape to begin with (ineligible, or filed under
+ * the wrong form entirely). Showing a deadline/penalty check for these would be actively
+ * misleading, not just irrelevant (ticket 16 found and fixed 4 UI bugs from this exact gap;
+ * ticket 17 generalizes the check itself so a future suppressed code doesn't need another
+ * hand-added `if` in `index.ts`). */
+export const DEADLINE_SUPPRESSED_CODES: RuleCode[] = ["CODE_8_ELIGIBILITY", "CODE_9_WRONG_FORM"];
 
 /** Codes that can be diagnosed and ranked together (excludes Code 6/7, which are mutually
  * exclusive with the other codes at the UI level — spec Section 4). */
@@ -57,6 +73,15 @@ export type BankAccountType = "individual" | "joint" | "unsure";
  * branch instead (ticket 16, ~2026-09-01). */
 export type EligibilityIssueType = "under_six_months" | "over_nine_half_years" | "unsure";
 
+/** What the citizen is actually trying to withdraw — Code 9's branching sub-question
+ * (ticket 17). Deliberately about intent, not about which form they already filed
+ * (`claim_type` below already covers that, and is unrelated) — the fix is telling them which
+ * form matches what they're trying to do, so this decodes intent, not the wrong form itself.
+ * "unsure" gets its own branch (same pattern as Code 8) since many citizens don't clearly
+ * distinguish "my PF" from "my EPS/pension," and guessing wrong here means recommending the
+ * wrong form. */
+export type WithdrawalIntent = "full_settlement" | "pension_only" | "advance" | "unsure";
+
 export type ClaimType = "Form 19" | "Form 10C" | "Form 31" | "unsure";
 
 /** ISO date string, e.g. "2026-08-29". */
@@ -81,6 +106,8 @@ export interface PostRejectionInput {
   bank_kyc_submission_date?: ISODate;
   /** Required if CODE_8_ELIGIBILITY is selected. */
   eligibility_issue_type?: EligibilityIssueType;
+  /** Required if CODE_9_WRONG_FORM is selected. */
+  withdrawal_intent?: WithdrawalIntent;
   /** Required if CODE_7_NO_REASON is selected. */
   self_check_answers?: SelfCheckAnswers;
 }

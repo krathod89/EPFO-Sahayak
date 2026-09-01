@@ -232,3 +232,53 @@ describe("diagnose — Code 8 (eligibility/service-period), ticket 16", () => {
     expect(result.entries[0]!.fix).toMatch(/9\.5 years/);
   });
 });
+
+describe("diagnose — Code 9 (wrong form filed), ticket 17", () => {
+  it("throws if Code 9 is selected without withdrawal_intent", () => {
+    expect(() => diagnose({ codes: ["CODE_9_WRONG_FORM"], today_date: "2026-08-29" })).toThrow();
+  });
+
+  it("resolves the full_settlement branch, pointing to Form 19", () => {
+    const result = diagnose({
+      codes: ["CODE_9_WRONG_FORM"],
+      today_date: "2026-08-29",
+      withdrawal_intent: "full_settlement",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "full_settlement" });
+    expect(result.entries[0]!.fix).toMatch(/Form 19/);
+    // Same framing rule as Code 8 — this is a filing-choice case, not "not your fault."
+    expect(result.entries[0]!.explanation).not.toMatch(/not your fault/i);
+  });
+
+  it("resolves the pension_only branch, pointing to Form 10C", () => {
+    const result = diagnose({
+      codes: ["CODE_9_WRONG_FORM"],
+      today_date: "2026-08-29",
+      withdrawal_intent: "pension_only",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "pension_only" });
+    expect(result.entries[0]!.fix).toMatch(/Form 10C/);
+  });
+
+  it("resolves the advance branch, pointing to Form 31", () => {
+    const result = diagnose({
+      codes: ["CODE_9_WRONG_FORM"],
+      today_date: "2026-08-29",
+      withdrawal_intent: "advance",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "advance" });
+    expect(result.entries[0]!.fix).toMatch(/Form 31/);
+  });
+
+  it("resolves the unsure branch honestly, covering all 3 forms rather than guessing", () => {
+    const result = diagnose({
+      codes: ["CODE_9_WRONG_FORM"],
+      today_date: "2026-08-29",
+      withdrawal_intent: "unsure",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "unsure" });
+    expect(result.entries[0]!.explanation).toMatch(/Form 19/);
+    expect(result.entries[0]!.explanation).toMatch(/Form 10C/);
+    expect(result.entries[0]!.explanation).toMatch(/Form 31/);
+  });
+});

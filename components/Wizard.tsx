@@ -25,6 +25,7 @@ import type {
   NameDobKycPageStatus,
   BankAccountType,
   EligibilityIssueType,
+  WithdrawalIntent,
   DiagnosisEntry,
   DeadlineResult,
   GrievanceOutput,
@@ -32,7 +33,7 @@ import type {
   PostRejectionFlowResult,
   ReadinessResult,
 } from "@/lib/rule-engine";
-import { SUGGESTED_CATEGORY_CAVEAT, hasBranch, MUTUALLY_EXCLUSIVE_CODES } from "@/lib/rule-engine";
+import { SUGGESTED_CATEGORY_CAVEAT, hasBranch, MUTUALLY_EXCLUSIVE_CODES, DEADLINE_SUPPRESSED_CODES } from "@/lib/rule-engine";
 import { dateInputError } from "@/lib/ui/date-validation";
 import { getOrCreateSessionId } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
@@ -48,6 +49,7 @@ type Screen =
   | "code3AccountTypeQuestion"
   | "code3Question"
   | "code8Question"
+  | "code9Question"
   | "selfCheck"
   | "filingDate"
   | "kycAtFiling"
@@ -74,6 +76,7 @@ interface WizardState {
   bankAccountType: BankAccountType | null;
   bankKycSubmissionDate: string | null;
   eligibilityIssueType: EligibilityIssueType | null;
+  withdrawalIntent: WithdrawalIntent | null;
   selfCheckAnswers: SelfCheckAnswersState;
   filingDate: string | null;
   kycCompleteAtFiling: boolean | null;
@@ -98,6 +101,7 @@ const init: WizardState = {
   bankAccountType: null,
   bankKycSubmissionDate: null,
   eligibilityIssueType: null,
+  withdrawalIntent: null,
   selfCheckAnswers: { ...emptySelfCheck },
   filingDate: null,
   kycCompleteAtFiling: null,
@@ -122,6 +126,27 @@ const RULE_CODE_SELECTION_TEXT: Record<RuleCode, string> = {
   CODE_6_APPROVED_NOT_CREDITED: "Claim was approved but the money never arrived in my account",
   CODE_7_NO_REASON: "I don't see a reason — EPFO didn't explain",
   CODE_8_ELIGIBILITY: "Rejected for not meeting a service-length rule (under 6 months, or over 9.5 years)",
+  CODE_9_WRONG_FORM: "Rejected for filing the wrong form (Form 19 / 10C / 31)",
+};
+
+// diagnosisSummary's subtitle default ("This is not your fault...") is wrong for Code 8 and
+// Code 9 — codes.ts's own CODE_8_BRANCHES/CODE_9_BRANCHES copy says the opposite (a genuine
+// eligibility rule / a filing-choice issue), so the summary must not contradict it. A table
+// here (rather than a growing per-code ternary chain) so a future such code is one new entry,
+// not another nested branch — each entry's wording is intentionally distinct, not a shared
+// skip, which is why this is a message table and not reused from DEADLINE_SUPPRESSED_CODES.
+const DIAGNOSIS_SUMMARY_SUBTITLE_OVERRIDE: Partial<Record<RuleCode, string>> = {
+  CODE_8_ELIGIBILITY: "This is a genuine eligibility rule, not a records mismatch. Here's the specific fix.",
+  CODE_9_WRONG_FORM: "This is a form-selection issue, not a records mismatch. Here's the specific fix.",
+};
+
+// ExplCard's "not a records mismatch" badge, keyed by code (all of a code's branches share the
+// same badge — ticket 16 established this for Code 8, ticket 17 extends it for Code 9). A table
+// instead of one hand-added `entry.code === "CODE_N"` boolean per code, so a future such code is
+// one new entry here rather than another copy-pasted boolean + JSX block.
+const CODE_BADGE_TEXT: Partial<Record<RuleCode, string>> = {
+  CODE_8_ELIGIBILITY: "Eligibility, not a mismatch",
+  CODE_9_WRONG_FORM: "Wrong form, not a mismatch",
 };
 
 interface SelfCheckUiItem {
@@ -195,6 +220,7 @@ const VALID_SCREENS = new Set<Screen>([
   "code3AccountTypeQuestion",
   "code3Question",
   "code8Question",
+  "code9Question",
   "selfCheck",
   "filingDate",
   "kycAtFiling",
@@ -255,6 +281,7 @@ function nextScreen(current: Screen, s: WizardState): Screen {
     case "selectCodes":
       if (s.selectedCodes.includes("CODE_7_NO_REASON")) return "selfCheck";
       if (s.selectedCodes.includes("CODE_8_ELIGIBILITY")) return "code8Question";
+      if (s.selectedCodes.includes("CODE_9_WRONG_FORM")) return "code9Question";
       if (s.selectedCodes.includes("CODE_1_NAME_DOB")) return "code1Question";
       if (s.selectedCodes.includes("CODE_3_BANK_KYC")) return "code3AccountTypeQuestion";
       return "filingDate";
@@ -271,6 +298,10 @@ function nextScreen(current: Screen, s: WizardState): Screen {
     // deadline check gets suppressed downstream for this code — keeps the rest of the flow
     // unchanged rather than branching the wizard's shared steps around one code.
     case "code8Question":
+      return "filingDate";
+    // Ticket 17: same reasoning as Code 8 — deadline check suppressed downstream, but the
+    // wizard's shared filing-date/KYC steps stay unchanged for this code too.
+    case "code9Question":
       return "filingDate";
     case "selfCheck":
       return s.path === "B" ? "readinessResult" : "filingDate";
@@ -568,9 +599,7 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
   const tierLabel = TIER_LABELS[entry.code];
   const isPortalSyncBug = hasBranch(entry, "portal_sync_bug");
   const isJointAccount = hasBranch(entry, "joint_account");
-  // All 3 of Code 8's branches share this distinction (ticket 16) — badged by code, not by
-  // branch, since the "eligibility rule, not a records mismatch" framing applies to all of them.
-  const isEligibility = entry.code === "CODE_8_ELIGIBILITY";
+  const codeBadgeText = CODE_BADGE_TEXT[entry.code];
   const band = entry.meta && "band" in entry.meta ? entry.meta.band : undefined;
 
   const tierColors: Record<string, string> = { tier1: "border-l-amber-400", tier2: "border-l-blue-400", unranked: "border-l-warm-300" };
@@ -610,10 +639,8 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
           {isJointAccount && (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Joint account</span>
           )}
-          {isEligibility && (
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-              Eligibility, not a mismatch
-            </span>
+          {codeBadgeText && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">{codeBadgeText}</span>
           )}
         </div>
         <h3 className="font-display font-semibold text-base text-warm-900 mt-1.5">{label}</h3>
@@ -894,6 +921,7 @@ export default function Wizard() {
       bank_kyc_submission_date:
         s.selectedCodes.includes("CODE_3_BANK_KYC") && s.bankAccountType !== "joint" ? s.bankKycSubmissionDate ?? undefined : undefined,
       eligibility_issue_type: s.selectedCodes.includes("CODE_8_ELIGIBILITY") ? s.eligibilityIssueType ?? undefined : undefined,
+      withdrawal_intent: s.selectedCodes.includes("CODE_9_WRONG_FORM") ? s.withdrawalIntent ?? undefined : undefined,
       self_check_answers:
         s.selectedCodes.includes("CODE_7_NO_REASON") && isSelfCheckComplete(s.selfCheckAnswers)
           ? (s.selfCheckAnswers as SelfCheckAnswers)
@@ -913,7 +941,7 @@ export default function Wizard() {
     if (s.screen !== "diagnosisSummary" && s.screen !== "grievanceOutput") return;
     if (!s.filingDate || s.kycCompleteAtFiling === null) return;
 
-    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.eligibilityIssueType, s.selfCheckAnswers]);
+    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.eligibilityIssueType, s.withdrawalIntent, s.selfCheckAnswers]);
     if (key === lastPostRejectionKeyRef.current) return; // nothing this fetch depends on actually changed
 
     const myRequestId = ++postRejectionRequestIdRef.current;
@@ -1153,7 +1181,7 @@ export default function Wizard() {
     }
 
     const commonIds: RuleCode[] = ["CODE_1_NAME_DOB", "CODE_2_DOE", "CODE_3_BANK_KYC", "CODE_4_EPS", "CODE_5_OLD_CLAIM"];
-    const otherIds: RuleCode[] = ["CODE_7_NO_REASON", "CODE_6_APPROVED_NOT_CREDITED", "CODE_8_ELIGIBILITY"];
+    const otherIds: RuleCode[] = ["CODE_7_NO_REASON", "CODE_6_APPROVED_NOT_CREDITED", "CODE_8_ELIGIBILITY", "CODE_9_WRONG_FORM"];
 
     function renderCard(id: RuleCode) {
       const checked = s.selectedCodes.includes(id);
@@ -1404,6 +1432,50 @@ export default function Wizard() {
     );
   }
 
+  // ── Code 9 wrong-form question (ticket 17) ──────────────────────────────
+  // Same "unsure gets its own honest branch" pattern as Code 8 — the three forms have
+  // different remedies, and many citizens don't clearly distinguish "my PF" from "my
+  // EPS/pension," so guessing wrong here would recommend the wrong form.
+
+  if (s.screen === "code9Question") {
+    content = (
+      <Shell step={2} totalSteps={5} onBack={back} label="Wrong form">
+        <div className="space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Wrong claim form filed</p>
+            <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">What are you actually trying to withdraw?</h2>
+            <p className="text-warm-600 text-sm mt-2 leading-relaxed">
+              This determines which form actually fits your situation — Form 19, 10C, and 31 serve different purposes.
+            </p>
+          </div>
+
+          <div className="space-y-2" role="radiogroup" aria-label="What are you actually trying to withdraw?">
+            {(["full_settlement", "pension_only", "advance", "unsure"] as const).map((v) => (
+              <RadioCard
+                key={v}
+                label={
+                  v === "full_settlement"
+                    ? "My full PF balance, since I've left this job (Form 19)"
+                    : v === "pension_only"
+                      ? "Only my pension (EPS) balance (Form 10C)"
+                      : v === "advance"
+                        ? "An advance while still employed (Form 31)"
+                        : "I'm not sure which one fits"
+                }
+                checked={s.withdrawalIntent === v}
+                onChange={() => setS({ ...s, withdrawalIntent: v })}
+              />
+            ))}
+          </div>
+
+          <PrimaryBtn full disabled={!s.withdrawalIntent} onClick={advance}>
+            Continue <ArrowRight className="size-4" />
+          </PrimaryBtn>
+        </div>
+      </Shell>
+    );
+  }
+
   // ── Self-check (Path B and Code 7) ────────────────────────────────────
 
   if (s.screen === "selfCheck") {
@@ -1460,18 +1532,20 @@ export default function Wizard() {
 
   if (s.screen === "filingDate") {
     const filingDateError = dateInputError(s.filingDate);
-    // Ticket 16: the deadline/penalty check is deliberately suppressed for Code 8 (an
-    // ineligible claim was never going to be settled regardless of the clock) — the copy
-    // below must not promise a check that will silently never appear on diagnosisSummary.
-    const isEligibility = s.selectedCodes.includes("CODE_8_ELIGIBILITY");
+    // Ticket 16 (Code 8) / ticket 17 (Code 9): the deadline/penalty check is deliberately
+    // suppressed for these codes (the claim was never going to be settled regardless of the
+    // clock) — the copy below must not promise a check that will silently never appear on
+    // diagnosisSummary. Driven by the same shared DEADLINE_SUPPRESSED_CODES list index.ts
+    // uses, so a future suppressed code doesn't need a 3rd hand-added check here.
+    const suppressesDeadline = s.selectedCodes.some((c) => DEADLINE_SUPPRESSED_CODES.includes(c));
     content = (
       <Shell step={3} totalSteps={5} onBack={back} label="Filing date">
         <div className="space-y-5">
           <div>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">When did you file this claim?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              {isEligibility
-                ? "EPFO's settlement deadline and penalty rule don't apply to an eligibility rejection — we still ask for your filing date to keep your case details complete."
+              {suppressesDeadline
+                ? "EPFO's settlement deadline and penalty rule don't apply here — we still ask for your filing date to keep your case details complete."
                 : "We'll check whether EPFO has already missed its own settlement deadline, and whether you may be owed a 12% penalty."}
             </p>
           </div>
@@ -1500,7 +1574,7 @@ export default function Wizard() {
             )}
           </div>
 
-          {!isEligibility && (
+          {!suppressesDeadline && (
             <div className="rounded-xl bg-warm-100 border border-warm-200 px-3.5 py-3 flex gap-2.5 text-xs text-warm-600 leading-relaxed">
               <Info className="size-4 shrink-0 mt-0.5 text-warm-400" />
               <span>
@@ -1521,10 +1595,11 @@ export default function Wizard() {
   // ── KYC at filing ───────────────────────────────────────────────────────
 
   if (s.screen === "kycAtFiling") {
-    // Ticket 16: same suppression as filingDate — these sublabels state a deadline that
-    // doesn't apply to Code 8 (deliberately suppressed, see index.ts), so they'd otherwise
-    // repeat the exact bug shape already fixed on the filingDate and diagnosisSummary screens.
-    const isEligibility = s.selectedCodes.includes("CODE_8_ELIGIBILITY");
+    // Ticket 16 (Code 8) / ticket 17 (Code 9): same suppression as filingDate — these
+    // sublabels state a deadline that doesn't apply to these codes (deliberately suppressed,
+    // see index.ts), so they'd otherwise repeat the exact bug shape already fixed on the
+    // filingDate and diagnosisSummary screens.
+    const suppressesDeadline = s.selectedCodes.some((c) => DEADLINE_SUPPRESSED_CODES.includes(c));
     content = (
       <Shell step={3} totalSteps={5} onBack={back} label="Filing date">
         <div className="space-y-5">
@@ -1539,13 +1614,13 @@ export default function Wizard() {
           <div className="space-y-2" role="radiogroup" aria-label="Was your KYC complete when you filed?">
             <RadioCard
               label="Yes — all KYC was complete and verified"
-              sublabel={isEligibility ? undefined : "EPFO's 3-day deadline applies"}
+              sublabel={suppressesDeadline ? undefined : "EPFO's 3-day deadline applies"}
               checked={s.kycCompleteAtFiling === true}
               onChange={() => setS({ ...s, kycCompleteAtFiling: true })}
             />
             <RadioCard
               label="No — KYC was not fully complete"
-              sublabel={isEligibility ? undefined : "EPFO's 20-day deadline applies"}
+              sublabel={suppressesDeadline ? undefined : "EPFO's 20-day deadline applies"}
               checked={s.kycCompleteAtFiling === false}
               onChange={() => setS({ ...s, kycCompleteAtFiling: false })}
             />
@@ -1563,10 +1638,11 @@ export default function Wizard() {
 
   if (s.screen === "diagnosisSummary") {
     const isCode7 = s.selectedCodes.includes("CODE_7_NO_REASON");
-    // Ticket 16: Code 8 is deliberately NOT framed as "not your fault" — codes.ts's own
-    // CODE_8_BRANCHES copy says the opposite ("EPFO's rejection is correct"), so the summary
-    // subtitle must not contradict it the way the shared default does for every other code.
-    const isEligibility = s.selectedCodes.includes("CODE_8_ELIGIBILITY");
+    // See DIAGNOSIS_SUMMARY_SUBTITLE_OVERRIDE above for why Code 8/Code 9 get distinct wording
+    // here instead of the shared "not your fault" default.
+    const subtitleOverride = s.selectedCodes
+      .map((c) => DIAGNOSIS_SUMMARY_SUBTITLE_OVERRIDE[c])
+      .find((text) => text !== undefined);
     const diag = postRejectionResult?.diagnosis;
     const selfCheck = diag?.selfCheck;
     const entries = diag?.entries ?? [];
@@ -1623,9 +1699,7 @@ export default function Wizard() {
                       ? "Based on your answers, here are the most likely causes. Each one has a specific fix."
                       : showPriorityRanking
                         ? "Fixing in this order will unblock your claim fastest."
-                        : isEligibility
-                          ? "This is a genuine eligibility rule, not a records mismatch. Here's the specific fix."
-                          : "This is not your fault. Here's the specific fix."}
+                        : (subtitleOverride ?? "This is not your fault. Here's the specific fix.")}
                 </p>
               </div>
 
@@ -1677,8 +1751,18 @@ export default function Wizard() {
                 </>
               )}
 
+              {/* Second review pass on ticket 17 flagged that this button unconditionally
+                  promised "grievance text" even for codes that will never produce one (Code
+                  8, 9, Code 3's joint-account branch, wait bands 1-2) — the same "unconditional
+                  promise the underlying state doesn't support" shape ticket 16 fixed for the
+                  deadline check. postRejectionResult.grievance is already computed here (the
+                  fetch effect above runs on this screen too), so the never-applicable case is
+                  knowable before the button is even shown. */}
               <PrimaryBtn full onClick={advance}>
-                Generate grievance text <ArrowRight className="size-4" />
+                {postRejectionResult.grievance && !postRejectionResult.grievance.ready && postRejectionResult.grievance.reason === "not_applicable"
+                  ? "See what to do next"
+                  : "Generate grievance text"}{" "}
+                <ArrowRight className="size-4" />
               </PrimaryBtn>
             </>
           ) : null}
@@ -1691,54 +1775,64 @@ export default function Wizard() {
 
   if (s.screen === "grievanceOutput") {
     const grievance: GrievanceOutput | undefined = postRejectionResult?.grievance;
+    // Same never-applicable check as diagnosisSummary's button above — known as soon as
+    // postRejectionResult exists, independent of whether UAN/Claim ID are filled in, so the
+    // header and the fields card below must not promise "grievance text" for these cases.
+    const grievanceNeverApplicable = !!grievance && !grievance.ready && grievance.reason === "not_applicable";
 
     content = (
       <Shell step={5} totalSteps={5} onBack={back} label="Grievance">
         <div className="space-y-5">
           <div>
-            <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">Your grievance text</h2>
+            <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">
+              {grievanceNeverApplicable ? "Next steps" : "Your grievance text"}
+            </h2>
             <p className="text-warm-600 text-sm mt-1.5 leading-relaxed">
-              Paste this into the free-text box on EPFiGMS. Fill in your UAN and Claim ID below to personalise it first.
+              {grievanceNeverApplicable
+                ? "There's no grievance to file for this — see why below."
+                : "Paste this into the free-text box on EPFiGMS. Fill in your UAN and Claim ID below to personalise it first."}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-warm-200 bg-white px-5 py-4 space-y-4">
-            <p className="text-sm font-semibold text-warm-700">Your details</p>
-            <div className="space-y-3">
-              <div>
-                <label htmlFor="uan-input" className="block text-xs font-medium text-warm-600 mb-1.5">
-                  UAN (12-digit Universal Account Number)
-                </label>
-                <input
-                  id="uan-input"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="e.g. 100123456789"
-                  value={s.uan}
-                  maxLength={16}
-                  onChange={(e) => setS({ ...s, uan: e.target.value })}
-                  className="w-full rounded-xl border-2 border-warm-200 bg-warm-50 px-3.5 py-2.5 text-sm text-warm-900 placeholder:text-warm-400 focus:outline-none focus:border-accent-500 transition-colors"
-                />
+          {!grievanceNeverApplicable && (
+            <div className="rounded-2xl border border-warm-200 bg-white px-5 py-4 space-y-4">
+              <p className="text-sm font-semibold text-warm-700">Your details</p>
+              <div className="space-y-3">
+                <div>
+                  <label htmlFor="uan-input" className="block text-xs font-medium text-warm-600 mb-1.5">
+                    UAN (12-digit Universal Account Number)
+                  </label>
+                  <input
+                    id="uan-input"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="e.g. 100123456789"
+                    value={s.uan}
+                    maxLength={16}
+                    onChange={(e) => setS({ ...s, uan: e.target.value })}
+                    className="w-full rounded-xl border-2 border-warm-200 bg-warm-50 px-3.5 py-2.5 text-sm text-warm-900 placeholder:text-warm-400 focus:outline-none focus:border-accent-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="claim-id-input" className="block text-xs font-medium text-warm-600 mb-1.5">
+                    Claim ID (shown on your rejection notice or UAN portal)
+                  </label>
+                  <input
+                    id="claim-id-input"
+                    type="text"
+                    placeholder="e.g. MHBAN2401XXXXXXXXX"
+                    value={s.claimId}
+                    onChange={(e) => setS({ ...s, claimId: e.target.value })}
+                    className="w-full rounded-xl border-2 border-warm-200 bg-warm-50 px-3.5 py-2.5 text-sm text-warm-900 placeholder:text-warm-400 focus:outline-none focus:border-accent-500 transition-colors"
+                  />
+                </div>
+                {/* The backend won't finalize grievance text without both fields — this is a
+                    real rule, not a UI-only nicety, so both are collected here even though
+                    the original design treated them as fully optional. */}
+                <p className="text-xs text-warm-500">Both are required to generate your grievance text.</p>
               </div>
-              <div>
-                <label htmlFor="claim-id-input" className="block text-xs font-medium text-warm-600 mb-1.5">
-                  Claim ID (shown on your rejection notice or UAN portal)
-                </label>
-                <input
-                  id="claim-id-input"
-                  type="text"
-                  placeholder="e.g. MHBAN2401XXXXXXXXX"
-                  value={s.claimId}
-                  onChange={(e) => setS({ ...s, claimId: e.target.value })}
-                  className="w-full rounded-xl border-2 border-warm-200 bg-warm-50 px-3.5 py-2.5 text-sm text-warm-900 placeholder:text-warm-400 focus:outline-none focus:border-accent-500 transition-colors"
-                />
-              </div>
-              {/* The backend won't finalize grievance text without both fields — this is a
-                  real rule, not a UI-only nicety, so both are collected here even though
-                  the original design treated them as fully optional. */}
-              <p className="text-xs text-warm-500">Both are required to generate your grievance text.</p>
             </div>
-          </div>
+          )}
 
           {apiPending && !grievance ? (
             <p className="text-sm text-warm-600">Preparing your grievance text…</p>

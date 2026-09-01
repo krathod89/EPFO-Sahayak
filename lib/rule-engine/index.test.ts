@@ -185,6 +185,53 @@ describe("runPostRejectionFlow — Code 8, eligibility branch (ticket 16)", () =
   });
 });
 
+describe("runPostRejectionFlow — Code 9, wrong-form branch (ticket 17)", () => {
+  // Same discipline as ticket 16's Code 8 tests: written before index.ts's Code 9 wiring, to
+  // catch an orchestrator-forwarding gap (a new field silently dropped) in this ticket's own
+  // red phase rather than needing a dedicated review pass.
+  it("resolves the wrong-form branch end to end, and generates no grievance", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM"],
+      withdrawal_intent: "pension_only",
+    });
+    expect(result.diagnosis.entries[0]!.meta).toMatchObject({ branch: "pension_only" });
+    expect(result.diagnosis.entries[0]!.fix).toMatch(/Form 10C/);
+    expect(result.grievance?.ready).toBe(false);
+    if (result.grievance && !result.grievance.ready && result.grievance.reason === "not_applicable") {
+      expect(result.grievance.note).toMatch(/form/i);
+    }
+  });
+
+  // A wrong-form-filed claim was never going to be settled under that form regardless of the
+  // clock — same suppression reasoning as Code 8, deliberately, not just left unused.
+  it("suppresses the deadline check entirely for a wrong-form rejection", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM"],
+      withdrawal_intent: "advance",
+    });
+    expect(result.deadline).toBeUndefined();
+  });
+});
+
+describe("runPostRejectionFlow — exclusive-code dispatch order (ticket 17 review finding)", () => {
+  // schema.ts's cross-field validation guarantees at most one of Codes 6/8/9 ever reaches this
+  // function on a real (validated) request — this test bypasses that on purpose, the way a
+  // future internal caller might, to lock in that the orchestrator itself still prioritizes
+  // Code 6 regardless of array order (matching the old hand-written `else if` chain's
+  // behavior), rather than depending on schema.ts as the only thing preventing drift.
+  it("still resolves Code 6 first even when it appears after Code 9 in the array", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM", "CODE_6_APPROVED_NOT_CREDITED"],
+      withdrawal_intent: "advance",
+    });
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) expect(result.grievance.variant).toBe("D");
+  });
+});
+
 describe("runPreFilingFlow", () => {
   it("delegates directly to the readiness check, with no priority/deadline fields", () => {
     const input: PreFilingInput = {

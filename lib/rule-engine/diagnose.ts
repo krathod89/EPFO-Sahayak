@@ -9,6 +9,7 @@ import {
   CODE_3_GENERAL,
   CODE_3_INTRO,
   CODE_8_BRANCHES,
+  CODE_9_BRANCHES,
   SIMPLE_CODE_COPY,
 } from "./codes";
 import { bucketSelfCheck } from "./selfCheck";
@@ -20,19 +21,25 @@ import type {
   NameDobKycPageStatus,
   RuleCode,
   SelfCheckAnswers,
+  WithdrawalIntent,
 } from "./types";
 
 /** Every named branch across every code that has one (Code 1's two, Code 3's joint-account
- * branch, Code 8's three). One shared union rather than redeclared per meta-shape, so
- * `hasBranch()` below stays a single, reusable type guard instead of the 4x-duplicated inline
- * check it replaced (ticket 15, code-review pass). */
+ * branch, Code 8's three, Code 9's four). One shared union rather than redeclared per
+ * meta-shape, so `hasBranch()` below stays a single, reusable type guard instead of the
+ * 4x-duplicated inline check it replaced (ticket 15, code-review pass). Code 9's branches
+ * reuse "unsure" — same literal, no collision, since it's just a discriminant string checked
+ * per-code at each call site. */
 export type EntryBranch =
   | "standard_mismatch"
   | "portal_sync_bug"
   | "joint_account"
   | "under_six_months"
   | "over_nine_half_years"
-  | "unsure";
+  | "unsure"
+  | "full_settlement"
+  | "pension_only"
+  | "advance";
 
 export interface DiagnosisEntry {
   code: RuleCode;
@@ -66,6 +73,7 @@ export interface DiagnoseParams {
   bank_account_type?: BankAccountType;
   bank_kyc_submission_date?: ISODate;
   eligibility_issue_type?: EligibilityIssueType;
+  withdrawal_intent?: WithdrawalIntent;
   self_check_answers?: SelfCheckAnswers;
 }
 
@@ -106,6 +114,13 @@ function resolveCode8(issueType: EligibilityIssueType): DiagnosisEntry {
   return { code: "CODE_8_ELIGIBILITY", ...branchCopy, meta: { branch: issueType } };
 }
 
+/** Code 9's four branches (ticket 17) — see codes.ts's CODE_9_BRANCHES for why `unsure` gets
+ * its own honest branch rather than guessing which form fits. */
+function resolveCode9(intent: WithdrawalIntent): DiagnosisEntry {
+  const branchCopy = CODE_9_BRANCHES[intent];
+  return { code: "CODE_9_WRONG_FORM", ...branchCopy, meta: { branch: intent } };
+}
+
 function resolveSimpleCode(code: RuleCode): DiagnosisEntry {
   const copy = SIMPLE_CODE_COPY[code];
   if (!copy) throw new Error(`Unsupported code in diagnose(): ${code}`);
@@ -134,6 +149,7 @@ export function diagnose(params: DiagnoseParams): DiagnoseResult {
     bank_account_type,
     bank_kyc_submission_date,
     eligibility_issue_type,
+    withdrawal_intent,
     self_check_answers,
   } = params;
 
@@ -172,6 +188,12 @@ export function diagnose(params: DiagnoseParams): DiagnoseResult {
         throw new Error("eligibility_issue_type is required when CODE_8_ELIGIBILITY is selected");
       }
       return resolveCode8(eligibility_issue_type);
+    }
+    if (code === "CODE_9_WRONG_FORM") {
+      if (!withdrawal_intent) {
+        throw new Error("withdrawal_intent is required when CODE_9_WRONG_FORM is selected");
+      }
+      return resolveCode9(withdrawal_intent);
     }
     return resolveSimpleCode(code);
   });

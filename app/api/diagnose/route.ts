@@ -42,8 +42,9 @@ export async function POST(request: Request) {
       tier2: result.priority?.tier2 ?? [],
       unranked: result.priority?.unranked ?? [],
     });
-    // Absent for Code 8 (ticket 16) — an ineligible claim was never going to be settled
-    // regardless of the clock, so index.ts deliberately skips computing this at all.
+    // Absent for any code in DEADLINE_SUPPRESSED_CODES (Code 8, ticket 16; Code 9, ticket 17)
+    // — those claims were never going to be settled regardless of the clock, so index.ts
+    // deliberately skips computing this at all.
     if (result.deadline) {
       trackServerEvent(sessionId, "deadline_check_shown", {
         status: result.deadline.status,

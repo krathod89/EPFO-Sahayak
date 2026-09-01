@@ -113,6 +113,30 @@ describe("POST /api/diagnose — post_rejection", () => {
     expect(eventTypes).not.toContain("deadline_check_shown");
   });
 
+  // Same gap, same fix, for Code 9 (ticket 17) — added proactively this time, applying the
+  // lesson from ticket 16 rather than waiting for a review pass to flag the same gap again.
+  it("suppresses deadline_check_shown and result.deadline for a wrong-form (Code 9) rejection", async () => {
+    const res = await POST(
+      jsonRequest({
+        entry_point: "post_rejection",
+        rejection_codes_selected: ["CODE_9_WRONG_FORM"],
+        withdrawal_intent: "full_settlement",
+        filing_date: "2026-08-01",
+        kyc_complete_at_filing: true,
+        today_date: "2026-08-10",
+        session_id: "sess-4",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deadline).toBeUndefined();
+    expect(body.grievance.ready).toBe(false);
+
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
+    expect(eventTypes).toContain("diagnosis_shown");
+    expect(eventTypes).not.toContain("deadline_check_shown");
+  });
+
   it("rejects a request combining Code 6 with another code", async () => {
     const res = await POST(
       jsonRequest({
