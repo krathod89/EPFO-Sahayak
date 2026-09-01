@@ -9,7 +9,23 @@ import { diagnose, hasBranch, type DiagnoseResult, type DiagnosisEntry } from ".
 import { buildGrievance, type GrievanceOutput, type StandardKind, type VariantKind } from "./grievance";
 import { prioritize, type PriorityResult } from "./prioritize";
 import { readinessResult, type ReadinessResult } from "./readiness";
-import type { DiagnosableCode, PostRejectionInput, PreFilingInput, RuleCode } from "./types";
+import { DEADLINE_SUPPRESSED_CODES, type DiagnosableCode, type PostRejectionInput, type PreFilingInput, type RuleCode } from "./types";
+
+/** Codes that are mutually exclusive with everything else (see `MUTUALLY_EXCLUSIVE_CODES` in
+ * types.ts) AND always build one fixed grievance kind, regardless of branch — Code 6
+ * (approved, not credited), Code 8 (eligibility, ticket 16), Code 9 (wrong form, ticket 17).
+ * Code 7 is exclusive too but runs a structurally different self-check sub-flow, so it's
+ * handled separately below, not folded into this table.
+ *
+ * A code-review pass on ticket 16 flagged the previous shape here — a fresh `else if
+ * (input.rejection_codes_selected.includes("CODE_X"))` block hand-added per code — as the
+ * point where a declarative lookup starts paying for itself, once a 4th such code showed up.
+ * Ticket 17 (this one) is that 4th code; this table is the generalization. */
+const EXCLUSIVE_CODE_GRIEVANCE_KIND: Partial<Record<RuleCode, VariantKind>> = {
+  CODE_6_APPROVED_NOT_CREDITED: { type: "approved_not_credited" },
+  CODE_8_ELIGIBILITY: { type: "eligibility" },
+  CODE_9_WRONG_FORM: { type: "wrong_form" },
+};
 
 const DIAGNOSABLE_CODES: DiagnosableCode[] = [
   "CODE_1_NAME_DOB",
@@ -39,9 +55,10 @@ export interface PostRejectionFlowResult {
   diagnosis: DiagnoseResult;
   /** Present only when 2+ diagnosable codes were selected (spec Section 4). */
   priority?: PriorityResult;
-  /** Absent for Code 8 (ticket 16) — an ineligible claim was never going to be settled
-   * regardless of the 3/20-day clock, so showing a deadline/penalty check would be actively
-   * misleading, not just unused. Present for every other code. */
+  /** Absent for any code in DEADLINE_SUPPRESSED_CODES (types.ts) — currently Code 8 (ticket
+   * 16) and Code 9 (ticket 17). Those claims were never going to be settled under the 3/20-day
+   * clock regardless, so showing a deadline/penalty check would be actively misleading, not
+   * just unused. Present for every other code. */
   deadline?: DeadlineResult;
   /** Present when the situation warrants an auto-generated grievance. Absent when, e.g.,
    * Code 7's self-check found an issue to fix first (spec Section 3, Code 7). */
@@ -93,15 +110,17 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
     bank_account_type: input.bank_account_type,
     bank_kyc_submission_date: input.bank_kyc_submission_date,
     eligibility_issue_type: input.eligibility_issue_type,
+    withdrawal_intent: input.withdrawal_intent,
     self_check_answers: input.self_check_answers,
   });
 
-  // Ticket 16: an ineligible claim (Code 8) was never going to be settled regardless of the
-  // 3/20-day clock — showing "EPFO missed its deadline, you're owed a penalty" here would be
-  // actively misleading, not just unused, so the check is skipped entirely rather than
-  // computed-but-hidden.
-  const isEligibilityRejection = input.rejection_codes_selected.includes("CODE_8_ELIGIBILITY");
-  const deadline = isEligibilityRejection ? undefined : checkDeadline(input.filing_date, input.kyc_complete_at_filing, today);
+  // Ticket 16 (Code 8) / ticket 17 (Code 9): these claims were never going to be settled
+  // regardless of the 3/20-day clock — showing "EPFO missed its deadline, you're owed a
+  // penalty" here would be actively misleading, not just unused, so the check is skipped
+  // entirely rather than computed-but-hidden. Declarative list in types.ts (DEADLINE_SUPPRESSED_CODES)
+  // so a future suppressed code doesn't need another hand-added branch here.
+  const suppressesDeadline = input.rejection_codes_selected.some((c) => DEADLINE_SUPPRESSED_CODES.includes(c));
+  const deadline = suppressesDeadline ? undefined : checkDeadline(input.filing_date, input.kyc_complete_at_filing, today);
 
   const diagnosableSelected = input.rejection_codes_selected.filter(isDiagnosableCode);
   const priority = diagnosableSelected.length > 1 ? prioritize(diagnosableSelected) : undefined;
@@ -111,25 +130,29 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
 
   let grievance: GrievanceOutput | undefined;
 
-  if (input.rejection_codes_selected.includes("CODE_6_APPROVED_NOT_CREDITED")) {
+  // Exclusive code with a fixed grievance kind (Code 6, 8, or 9) — see EXCLUSIVE_CODE_GRIEVANCE_KIND
+  // above. Each of Code 8's 3 branches and Code 9's 4 branches all map to the same
+  // not_applicable outcome in grievance.ts, so no branch-specific lookup is needed here.
+  //
+  // Iterate the TABLE's key order (Code 6, then 8, then 9 — as declared above), not
+  // rejection_codes_selected's order. schema.ts's cross-field validation already guarantees
+  // at most one exclusive code reaches this function on any real (validated) request, but a
+  // code-review pass on this ticket flagged that a caller bypassing that validation would get
+  // an outcome that depends on array order — Code 6 no longer always winning, unlike the old
+  // hand-written `else if` chain this table replaced. This restores that old guarantee.
+  const exclusiveCode = (Object.keys(EXCLUSIVE_CODE_GRIEVANCE_KIND) as RuleCode[]).find((code) =>
+    input.rejection_codes_selected.includes(code)
+  );
+  const exclusiveKind = exclusiveCode ? EXCLUSIVE_CODE_GRIEVANCE_KIND[exclusiveCode] : undefined;
+
+  if (exclusiveKind) {
     grievance = buildGrievance({
       uan,
       claim_id: claimId,
       filing_date: input.filing_date,
       today_date: today,
       deadline,
-      kind: { type: "approved_not_credited" },
-    });
-  } else if (isEligibilityRejection) {
-    // Always not_applicable (grievance.ts) — a genuine eligibility rule can't be overridden
-    // by filing a grievance, regardless of which of Code 8's three branches applies.
-    grievance = buildGrievance({
-      uan,
-      claim_id: claimId,
-      filing_date: input.filing_date,
-      today_date: today,
-      deadline,
-      kind: { type: "eligibility" },
+      kind: exclusiveKind,
     });
   } else if (input.rejection_codes_selected.includes("CODE_7_NO_REASON")) {
     if (diagnosis.selfCheck?.allClean) {

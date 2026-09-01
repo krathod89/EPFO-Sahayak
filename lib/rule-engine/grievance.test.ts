@@ -37,6 +37,39 @@ describe("buildGrievance — missing-info guard", () => {
   });
 });
 
+describe("buildGrievance — not_applicable is reported even with no UAN/claim ID (ticket 17 review finding)", () => {
+  // Every kind below can NEVER produce a grievance, regardless of what uan/claim_id the
+  // citizen eventually types in — the earlier missing_info-first ordering surfaced a
+  // misleading intermediate "missing_info" state for these kinds (the UI would promise
+  // "grievance text" and only reveal not_applicable once both fields were filled in). Each
+  // case here omits both fields to lock in that not_applicable wins regardless.
+  const noUanClaimId = { filing_date: base.filing_date, today_date: base.today_date, uan: "", claim_id: "" };
+
+  it("wait band 1-2 (bank_kyc_escalate)", () => {
+    const result = buildGrievance({ ...noUanClaimId, kind: { type: "bank_kyc_escalate", band: 1, bank_kyc_submission_date: "2026-08-05" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready) expect(result.reason).toBe("not_applicable");
+  });
+
+  it("joint account", () => {
+    const result = buildGrievance({ ...noUanClaimId, kind: { type: "joint_account" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready) expect(result.reason).toBe("not_applicable");
+  });
+
+  it("eligibility", () => {
+    const result = buildGrievance({ ...noUanClaimId, kind: { type: "eligibility" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready) expect(result.reason).toBe("not_applicable");
+  });
+
+  it("wrong form", () => {
+    const result = buildGrievance({ ...noUanClaimId, kind: { type: "wrong_form" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready) expect(result.reason).toBe("not_applicable");
+  });
+});
+
 describe("buildGrievance — Variant A (standard)", () => {
   it("builds standard rejection text with the code name and restatement", () => {
     const result = buildGrievance({
@@ -168,6 +201,18 @@ describe("buildGrievance — eligibility (no grievance generated), ticket 16", (
     expect(result.ready).toBe(false);
     if (!result.ready && result.reason === "not_applicable") {
       expect(result.note).toMatch(/eligibility/i);
+    }
+  });
+});
+
+describe("buildGrievance — wrong form filed (no grievance generated), ticket 17", () => {
+  // A wrong-form rejection is resolved by refiling under the correct form, not by escalating
+  // — same not_applicable pattern as eligibility and joint_account.
+  it("refuses to generate a grievance for a wrong-form rejection", () => {
+    const result = buildGrievance({ ...base, kind: { type: "wrong_form" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready && result.reason === "not_applicable") {
+      expect(result.note).toMatch(/form/i);
     }
   });
 });

@@ -165,4 +165,42 @@ describe("validatePostRejectionCrossFields", () => {
     });
     expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
   });
+
+  // Ticket 17 (wrong-form-filed code): Code 9 is mutually exclusive with every other code,
+  // joining Codes 6/7/8. withdrawal_intent is required whenever Code 9 is selected.
+  it("requires withdrawal_intent when CODE_9 is selected", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM"],
+    });
+    expect(errors.some((e) => e.includes("withdrawal_intent"))).toBe(true);
+  });
+
+  it("passes when CODE_9 is selected alone with withdrawal_intent present", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM"],
+      withdrawal_intent: "full_settlement",
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects Code 9 combined with another code", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM", "CODE_2_DOE"],
+      withdrawal_intent: "full_settlement",
+    });
+    expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
+  });
+
+  it("rejects Code 9 combined with Code 8", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_9_WRONG_FORM", "CODE_8_ELIGIBILITY"],
+      withdrawal_intent: "full_settlement",
+      eligibility_issue_type: "under_six_months",
+    });
+    expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
+  });
 });

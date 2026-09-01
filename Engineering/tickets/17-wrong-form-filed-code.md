@@ -1,6 +1,6 @@
 # 17 — New code: wrong claim form filed
 
-**Status:** Open
+**Status:** Done (2026-09-01)
 
 Traces to: `spec.md` US1 (extends it — new code, same pattern as ticket 10). Rule logic source to extend: `Rule Engine/Rule Engine Spec.md` §3.
 
@@ -25,3 +25,15 @@ Found during the broader error-code coverage check (2026-08-31), alongside ticke
 
 - Tests cover the new code's explanation/fix text (correctly distinguishes Form 19 / 10C / 31 use cases) and confirm grievance generation is skipped/not-applicable for this code rather than producing misleading escalation copy.
 - Manual read-through: copy is clear about which form the citizen should refile under, not just "you picked wrong, try again."
+
+## Closeout
+
+Built as `CODE_9_WRONG_FORM` (not `CODE_10` as this ticket's text speculated — sequential by actual build order, ticket 10's code not yet built). New `withdrawal_intent` field (`full_settlement` / `pension_only` / `advance` / `unsure`) drives a 4-way branching question; each branch maps to the correct form and cross-references Code 8's eligibility conditions where relevant. Mutually exclusive with every other code. Grievance is always `not_applicable` (never generated); the deadline/penalty check is suppressed entirely, same reasoning as Code 8.
+
+**Generalized `index.ts`'s dispatch** rather than adding a 4th hand-written special case: `EXCLUSIVE_CODE_GRIEVANCE_KIND` (a lookup table, Codes 6/8/9) and `DEADLINE_SUPPRESSED_CODES` (a shared list, reused by `Wizard.tsx`) replace the old `else if` chain.
+
+**Two code-review passes, both with real findings, both fixed:**
+- Pass 1: the new dispatch table was order-dependent on `rejection_codes_selected` rather than always prioritizing Code 6 (fixed — now iterates the table's own key order); a hardcoded exclusivity error message that could drift from `MUTUALLY_EXCLUSIVE_CODES` (fixed — now derived); `Wizard.tsx`'s diagnosisSummary subtitle left as a per-code ternary chain inconsistent with the rest of the ticket's own generalization (fixed — now a lookup table).
+- Pass 2 traced a UI symptom (the "Generate grievance text" button and grievance-output screen unconditionally promising grievance text for codes that can never produce one — the same bug shape ticket 16 fixed for the deadline check) back to its real root cause in `grievance.ts`: `buildGrievance()` checked `missing_info` before `not_applicable`, so a never-applicable case looked like "still needs your UAN" until both fields were filled in. Fixed by reordering the check — `not_applicable` depends only on the diagnosed kind, not on which fields are filled — which also made the UI symptom's own fix work as intended. Also generalized `ExplCard`'s badge logic into a table, and corrected stale doc references (spec Section 1/2 code counts, the Section 8a workflow diagram missing Codes 8/9, a stale "7 codes" file header).
+
+**Verification:** 141/141 tests passing (up from 122 pre-ticket), clean typecheck, clean build. Direct API calls against a local dev server for all 4 branches, with and without `uan`/`claim_id`, confirming `deadline` is absent and `grievance.reason` is `not_applicable` immediately in both cases. Full browser walkthrough (Claude-in-Chrome) of the new `code9Question` screen through to grievance output, plus a Code 2 regression check confirming the normal deadline/grievance flow is unaffected.
