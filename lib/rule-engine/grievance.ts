@@ -103,7 +103,7 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
     case "standard":
       return {
         variant: "A",
-        subject: `Grievance regarding rejection of PF claim — ${kind.codeName}`,
+        subject: `Grievance regarding rejection of PF claim: ${kind.codeName}`,
         core: `My PF withdrawal claim (Claim ID: ${claim_id}, UAN: ${uan}) was rejected. The stated reason was: ${kind.codeName}. ${kind.issueSentence} I request EPFO to review and resettle my claim.`,
       };
 
@@ -111,52 +111,52 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
       if (kind.band !== 3) {
         return {
           notApplicable:
-            "No grievance is generated for wait-time bands 1-2 — the recommended action is to wait or check with your bank directly, not to file a grievance yet (Rule Engine Spec.md Section 6, Variant B).",
+            "No grievance is generated for wait-time bands 1-2. The recommended action is to wait or check with your bank directly, not to file a grievance yet (Rule Engine Spec.md Section 6, Variant B).",
         };
       }
       return {
         variant: "B",
-        subject: `Grievance regarding unverified bank KYC — Claim ID ${claim_id}`,
+        subject: `Grievance regarding unverified bank KYC (Claim ID ${claim_id})`,
         core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}) is blocked because my bank KYC is not verified. I submitted my bank KYC on ${kind.bank_kyc_submission_date}. This has taken longer than the typical bank/NPCI verification turnaround. I request EPFO to check the status of my bank KYC verification directly and resettle my claim.`,
       };
 
     case "joint_account":
       return {
         notApplicable:
-          "No grievance is generated for a joint-account rejection — the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
+          "No grievance is generated for a joint-account rejection. The fix is opening an individual bank account and resubmitting, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
       };
 
     case "eligibility":
       return {
         notApplicable:
-          "No grievance is generated for an eligibility rejection — a genuine service-length rule can't be overridden by filing a grievance. See the fix text above for the actual next step (Rule Engine Spec.md Section 6).",
+          "No grievance is generated for an eligibility rejection. A genuine service-length rule can't be overridden by filing a grievance. See the fix text above for the actual next step (Rule Engine Spec.md Section 6).",
       };
 
     case "wrong_form":
       return {
         notApplicable:
-          "No grievance is generated for a wrong-form-filed rejection — the fix is refiling under the correct form, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
+          "No grievance is generated for a wrong-form-filed rejection. The fix is refiling under the correct form, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
       };
 
     case "portal_sync_bug":
       return {
         variant: "C",
-        subject: `Grievance — claim screen shows outdated mismatch, KYC page already Approved and Verified — Claim ID ${claim_id}`,
+        subject: `Grievance: claim screen shows outdated mismatch, KYC page already Approved and Verified (Claim ID ${claim_id})`,
         core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}) was rejected for a name/DOB/father's-name mismatch. My KYC page already shows this detail as Approved and Verified (screenshot attached). My claim status page still shows this as an error (screenshot attached). This appears to be a synchronization issue between EPFO's KYC and claim-processing systems, not an actual mismatch in my records. I request EPFO to correct this synchronization issue and reprocess my claim without requiring a new Joint Declaration.`,
       };
 
     case "approved_not_credited":
       return {
         variant: "D",
-        subject: `Grievance — PF claim approved but payment not received — Claim ID ${claim_id}`,
+        subject: `Grievance: PF claim approved but payment not received (Claim ID ${claim_id})`,
         core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}) was approved. The payment has not reached my bank account as of ${today_date}. I have checked my bank statement and found no matching transfer. I request EPFO to trace this payment and confirm its status, or reissue it if it failed.`,
       };
 
     case "demand_reason":
       return {
         variant: "E",
-        subject: `Grievance — PF claim rejected with no reason given — Claim ID ${claim_id}`,
-        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}), filed on ${filing_date}, was rejected. EPFO's claim status did not state a reason. I have checked my own records for the common causes of rejection — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to state the specific reason my claim was rejected, and to reprocess my claim once I have that information.`,
+        subject: `Grievance: PF claim rejected with no reason given (Claim ID ${claim_id})`,
+        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}), filed on ${filing_date}, was rejected. EPFO's claim status did not state a reason. I have checked my own records for the common causes of rejection (Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim) and found no issue on my end. I request EPFO to state the specific reason my claim was rejected, and to reprocess my claim once I have that information.`,
       };
 
     // Variant F (ticket 10) — Code 10 is for a citizen who sees a REAL EPFO remark that just
@@ -165,8 +165,8 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
     case "demand_clarification":
       return {
         variant: "F",
-        subject: `Grievance — PF claim rejected, stated reason unclear — Claim ID ${claim_id}`,
-        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}), filed on ${filing_date}, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information.`,
+        subject: `Grievance: PF claim rejected, stated reason unclear (Claim ID ${claim_id})`,
+        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}), filed on ${filing_date}, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes (Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim) and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information.`,
       };
   }
 }
