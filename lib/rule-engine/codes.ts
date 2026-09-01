@@ -1,4 +1,4 @@
-// The 9 rejection/failure codes and their plain-language copy.
+// The 10 rejection/failure codes and their plain-language copy.
 // Source of truth: Rule Engine/Rule Engine Spec.md, Section 3. Copy is reused verbatim
 // from that spec (already drafted plain-language text), not rewritten here.
 // See Engineering/ADR/0003-rule-content-as-versioned-code.md for why this lives in code.
@@ -66,6 +66,12 @@ export const CODE_DEFINITIONS: Record<RuleCode, CodeDefinition> = {
     trigger:
       "Matches EPFO remarks stating the claim was filed under the wrong form for the citizen's actual situation — e.g. Form 19 filed when Form 10C's pension withdrawal fits, or vice versa.",
   },
+  CODE_10_UNLISTED_REASON: {
+    code: "CODE_10_UNLISTED_REASON",
+    name: "I see a reason, but it's not listed here",
+    trigger:
+      "The citizen sees a real EPFO remark, but it doesn't match any of the 9 modeled codes above — distinct from Code 7, where EPFO shows no remark at all.",
+  },
 };
 
 export interface ExplanationAndFix {
@@ -102,6 +108,7 @@ export const SUGGESTED_CATEGORY_BY_CODE: Record<RuleCode, SuggestedCategory> = {
   // Record above. "PF Withdrawal" is the least-wrong placeholder if that ever changes.
   CODE_8_ELIGIBILITY: "PF Withdrawal",
   CODE_9_WRONG_FORM: "PF Withdrawal",
+  CODE_10_UNLISTED_REASON: "PF Withdrawal",
 };
 
 /** Caveat shown alongside `suggestedCategory` — must always accompany it; the hint is never
@@ -264,4 +271,20 @@ export const CODE_7_ALL_CLEAN: ExplanationAndFix = {
   explanation:
     "None of the common causes seem to apply to your case, as far as you can tell from your own records. EPFO has not given you a valid reason. You are entitled to know why your claim was rejected.",
   fix: "File a grievance through EPFiGMS that explicitly asks EPFO to state the actual reason for rejection. Do not guess a fix — demand the reason first.",
+};
+
+/** Code 10's opening text (ticket 10, spec-parallel to CODE_7_OPENING above) — honest about
+ * the real difference from Code 7: EPFO DID give a reason here, it just isn't one of the 9
+ * modeled codes. Note: like CODE_7_OPENING/CODE_7_ALL_CLEAN, this constant documents the
+ * source-of-truth copy per the spec but isn't imported into Wizard.tsx directly — the UI
+ * writes its own (consistent) copy inline, matching how Code 7's equivalent already works
+ * today. Flagged as a pre-existing gap, not introduced by this ticket; not fixed here to
+ * avoid an unrelated behavior change to Code 7's already-shipped screen. */
+export const CODE_10_OPENING =
+  "EPFO gave you a reason, but it's not one this tool recognizes yet. That doesn't mean nothing is wrong on your end — let's check the common causes yourself, one by one, the same way we would if EPFO had given no reason at all.";
+
+export const CODE_10_ALL_CLEAN: ExplanationAndFix = {
+  explanation:
+    "The reason EPFO gave doesn't match a cause this tool recognizes, and none of the common causes turned up an issue either, as far as you can tell from your own records. EPFO's stated reason isn't specific enough to act on.",
+  fix: "File a grievance through EPFiGMS asking EPFO to clarify the specific corrective action needed — reference the exact remark EPFO showed you, and note that you've already ruled out the common causes on your own.",
 };

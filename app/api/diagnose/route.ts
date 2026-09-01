@@ -32,6 +32,13 @@ export async function POST(request: Request) {
     }
 
     trackServerEvent(sessionId, "codes_selected", { codes: input.rejection_codes_selected });
+    // Fires whenever Code 7 or Code 10 (ticket 10) ran the self-check sub-flow — this branch
+    // never fired it at all before this fix, a pre-existing gap (predating ticket 10) found
+    // by a code-review pass on this ticket that also caught its own Analytics-section claim
+    // as false. Mirrors the pre_filing branch's already-correct call below.
+    if (input.self_check_answers) {
+      trackServerEvent(sessionId, "self_check_submitted", { answers: input.self_check_answers });
+    }
 
     const result = runPostRejectionFlow(input);
 

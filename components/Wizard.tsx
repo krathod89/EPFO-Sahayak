@@ -127,6 +127,7 @@ const RULE_CODE_SELECTION_TEXT: Record<RuleCode, string> = {
   CODE_7_NO_REASON: "I don't see a reason — EPFO didn't explain",
   CODE_8_ELIGIBILITY: "Rejected for not meeting a service-length rule (under 6 months, or over 9.5 years)",
   CODE_9_WRONG_FORM: "Rejected for filing the wrong form (Form 19 / 10C / 31)",
+  CODE_10_UNLISTED_REASON: "I see a reason, but it's not listed here",
 };
 
 // diagnosisSummary's subtitle default ("This is not your fault...") is wrong for Code 8 and
@@ -147,6 +148,31 @@ const DIAGNOSIS_SUMMARY_SUBTITLE_OVERRIDE: Partial<Record<RuleCode, string>> = {
 const CODE_BADGE_TEXT: Partial<Record<RuleCode, string>> = {
   CODE_8_ELIGIBILITY: "Eligibility, not a mismatch",
   CODE_9_WRONG_FORM: "Wrong form, not a mismatch",
+};
+
+/** Codes that route through the shared self-check sub-flow (diagnosisSummary's "all clean"
+ * copy below, and the `selfCheck` screen's header) — Code 7 (no reason given at all) and
+ * Code 10 (ticket 10: a real reason given, just not one this tool recognizes). A table here
+ * from the start, rather than a second hand-added `code10AllClean`-style boolean set copy-
+ * pasted from Code 7's, since this is the exact "a second code shares this shape" moment
+ * tickets 16/17 generalized elsewhere in this file — Code 10's wording must not claim "EPFO
+ * didn't say why," which is true for Code 7 but false for Code 10. */
+const SELF_CHECK_CODES: RuleCode[] = ["CODE_7_NO_REASON", "CODE_10_UNLISTED_REASON"];
+
+const SELF_CHECK_ALL_CLEAN_COPY: Partial<Record<RuleCode, { title: string; subtitle: string; whatToDo: string }>> = {
+  CODE_7_NO_REASON: {
+    title: "Your records look clean — but EPFO didn't say why",
+    subtitle: "None of the common causes apply to your case as far as you can tell. EPFO must state the real reason.",
+    whatToDo:
+      "File a grievance through EPFiGMS that explicitly asks EPFO to state the actual reason for the rejection. Do not guess a fix — demand the reason first. The grievance text on the next screen is ready for this.",
+  },
+  CODE_10_UNLISTED_REASON: {
+    title: "Your records look clean — but the reason doesn't match a known cause",
+    subtitle:
+      "The reason EPFO gave doesn't match a cause we recognize, and none of the common causes turned up an issue either.",
+    whatToDo:
+      "File a grievance through EPFiGMS asking EPFO to clarify the specific corrective action needed — the reason given isn't specific enough to act on. The grievance text on the next screen is ready for this.",
+  },
 };
 
 interface SelfCheckUiItem {
@@ -279,7 +305,8 @@ function nextScreen(current: Screen, s: WizardState): Screen {
     case "landing":
       return s.path === "A" ? "selectCodes" : "selfCheck";
     case "selectCodes":
-      if (s.selectedCodes.includes("CODE_7_NO_REASON")) return "selfCheck";
+      // Code 10 (ticket 10) shares Code 7's self-check sub-flow exactly.
+      if (s.selectedCodes.includes("CODE_7_NO_REASON") || s.selectedCodes.includes("CODE_10_UNLISTED_REASON")) return "selfCheck";
       if (s.selectedCodes.includes("CODE_8_ELIGIBILITY")) return "code8Question";
       if (s.selectedCodes.includes("CODE_9_WRONG_FORM")) return "code9Question";
       if (s.selectedCodes.includes("CODE_1_NAME_DOB")) return "code1Question";
@@ -922,8 +949,10 @@ export default function Wizard() {
         s.selectedCodes.includes("CODE_3_BANK_KYC") && s.bankAccountType !== "joint" ? s.bankKycSubmissionDate ?? undefined : undefined,
       eligibility_issue_type: s.selectedCodes.includes("CODE_8_ELIGIBILITY") ? s.eligibilityIssueType ?? undefined : undefined,
       withdrawal_intent: s.selectedCodes.includes("CODE_9_WRONG_FORM") ? s.withdrawalIntent ?? undefined : undefined,
+      // Code 10 (ticket 10) shares Code 7's self-check sub-flow exactly.
       self_check_answers:
-        s.selectedCodes.includes("CODE_7_NO_REASON") && isSelfCheckComplete(s.selfCheckAnswers)
+        (s.selectedCodes.includes("CODE_7_NO_REASON") || s.selectedCodes.includes("CODE_10_UNLISTED_REASON")) &&
+        isSelfCheckComplete(s.selfCheckAnswers)
           ? (s.selfCheckAnswers as SelfCheckAnswers)
           : undefined,
     };
@@ -1181,7 +1210,13 @@ export default function Wizard() {
     }
 
     const commonIds: RuleCode[] = ["CODE_1_NAME_DOB", "CODE_2_DOE", "CODE_3_BANK_KYC", "CODE_4_EPS", "CODE_5_OLD_CLAIM"];
-    const otherIds: RuleCode[] = ["CODE_7_NO_REASON", "CODE_6_APPROVED_NOT_CREDITED", "CODE_8_ELIGIBILITY", "CODE_9_WRONG_FORM"];
+    const otherIds: RuleCode[] = [
+      "CODE_7_NO_REASON",
+      "CODE_6_APPROVED_NOT_CREDITED",
+      "CODE_8_ELIGIBILITY",
+      "CODE_9_WRONG_FORM",
+      "CODE_10_UNLISTED_REASON",
+    ];
 
     function renderCard(id: RuleCode) {
       const checked = s.selectedCodes.includes(id);
@@ -1481,14 +1516,26 @@ export default function Wizard() {
   if (s.screen === "selfCheck") {
     const isPathB = s.path === "B";
     const allAnswered = isSelfCheckComplete(s.selfCheckAnswers);
+    // Code 10 (ticket 10) reaches this same screen via Code 7's self-check sub-flow, but "EPFO
+    // didn't explain" is false for it — EPFO gave a real reason, just not one this tool
+    // recognizes. Path B (pre-filing) never has a selected code, so this only matters for A.
+    const isCode10 = s.selectedCodes.includes("CODE_10_UNLISTED_REASON");
 
     content = (
       <Shell step={isPathB ? 1 : 2} totalSteps={isPathB ? 2 : 5} onBack={back} label={isPathB ? "Readiness check" : "Self-check"}>
         <div className="space-y-6">
           <div>
-            {!isPathB && <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">No reason given</p>}
+            {!isPathB && (
+              <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">
+                {isCode10 ? "Reason not recognized" : "No reason given"}
+              </p>
+            )}
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">
-              {isPathB ? "Let's check five common blockers" : "EPFO didn't explain — let's check ourselves"}
+              {isPathB
+                ? "Let's check five common blockers"
+                : isCode10
+                  ? "Not a reason we recognize — let's check ourselves"
+                  : "EPFO didn't explain — let's check ourselves"}
             </h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
               {isPathB
@@ -1637,7 +1684,13 @@ export default function Wizard() {
   // ── Diagnosis summary ───────────────────────────────────────────────────
 
   if (s.screen === "diagnosisSummary") {
-    const isCode7 = s.selectedCodes.includes("CODE_7_NO_REASON");
+    // Which self-check code (7 or 10) got us here, if either — see SELF_CHECK_CODES above.
+    // Iterates SELF_CHECK_CODES's own order, not s.selectedCodes's, so this can't disagree
+    // with index.ts's SELF_CHECK_ALL_CLEAN_KIND lookup (same order-independence fix, same
+    // ticket's review pass) about which code's copy/grievance wins if selection order ever
+    // diverges from the mutual-exclusivity UI's normal guarantee.
+    const selfCheckCode = SELF_CHECK_CODES.find((c) => s.selectedCodes.includes(c));
+    const isSelfCheckFlow = !!selfCheckCode;
     // See DIAGNOSIS_SUMMARY_SUBTITLE_OVERRIDE above for why Code 8/Code 9 get distinct wording
     // here instead of the shared "not your fault" default.
     const subtitleOverride = s.selectedCodes
@@ -1661,9 +1714,11 @@ export default function Wizard() {
       return undefined;
     }
 
-    const code7AllClean = isCode7 && selfCheck?.allClean === true;
-    const code7UnsuresOnly = isCode7 && !!selfCheck && selfCheck.issueEntries.length === 0 && selfCheck.unsureItems.length > 0;
-    const code7Entries = isCode7 ? selfCheck?.issueEntries ?? [] : entries;
+    const selfCheckAllClean = isSelfCheckFlow && selfCheck?.allClean === true;
+    const selfCheckUnsuresOnly =
+      isSelfCheckFlow && !!selfCheck && selfCheck.issueEntries.length === 0 && selfCheck.unsureItems.length > 0;
+    const selfCheckEntries = isSelfCheckFlow ? selfCheck?.issueEntries ?? [] : entries;
+    const allCleanCopy = selfCheckAllClean ? SELF_CHECK_ALL_CLEAN_COPY[selfCheckCode!] : undefined;
 
     content = (
       <Shell step={4} totalSteps={5} onBack={back} label="Diagnosis">
@@ -1682,20 +1737,20 @@ export default function Wizard() {
             <>
               <div>
                 <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">
-                  {code7AllClean
-                    ? "Your records look clean — but EPFO didn't say why"
-                    : code7UnsuresOnly
+                  {allCleanCopy
+                    ? allCleanCopy.title
+                    : selfCheckUnsuresOnly
                       ? "Double-check these items before your next step"
-                      : isCode7
-                        ? `We found ${code7Entries.length} likely reason${code7Entries.length > 1 ? "s" : ""}`
+                      : isSelfCheckFlow
+                        ? `We found ${selfCheckEntries.length} likely reason${selfCheckEntries.length > 1 ? "s" : ""}`
                         : showPriorityRanking
                           ? "Fix these in order"
                           : "Here's what happened"}
                 </h2>
                 <p className="text-warm-600 text-sm mt-1.5 leading-relaxed">
-                  {code7AllClean
-                    ? "None of the common causes apply to your case as far as you can tell. EPFO must state the real reason."
-                    : isCode7 && code7Entries.length > 0
+                  {allCleanCopy
+                    ? allCleanCopy.subtitle
+                    : isSelfCheckFlow && selfCheckEntries.length > 0
                       ? "Based on your answers, here are the most likely causes. Each one has a specific fix."
                       : showPriorityRanking
                         ? "Fixing in this order will unblock your claim fastest."
@@ -1703,7 +1758,7 @@ export default function Wizard() {
                 </p>
               </div>
 
-              {code7UnsuresOnly && selfCheck && (
+              {selfCheckUnsuresOnly && selfCheck && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 space-y-3">
                   <p className="text-sm font-semibold text-amber-800">
                     You weren't sure about {selfCheck.unsureItems.length} item{selfCheck.unsureItems.length > 1 ? "s" : ""}:
@@ -1723,20 +1778,17 @@ export default function Wizard() {
                 </div>
               )}
 
-              {code7AllClean && (
+              {allCleanCopy && (
                 <div className="rounded-2xl border border-warm-200 bg-white px-5 py-4 space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-warm-600">What to do</p>
-                  <p className="text-sm text-warm-700 leading-relaxed">
-                    File a grievance through EPFiGMS that explicitly asks EPFO to state the actual reason for the rejection. Do
-                    not guess a fix — demand the reason first. The grievance text on the next screen is ready for this.
-                  </p>
+                  <p className="text-sm text-warm-700 leading-relaxed">{allCleanCopy.whatToDo}</p>
                 </div>
               )}
 
               <motion.div variants={staggerListVariants} initial="hidden" animate="show" className="space-y-5">
-                {code7Entries.map((entry) => (
+                {selfCheckEntries.map((entry) => (
                   <motion.div key={entry.code} variants={staggerItemVariants}>
-                    <ExplCard entry={entry} priority={!isCode7 ? priorityFor(entry.code) : undefined} />
+                    <ExplCard entry={entry} priority={!isSelfCheckFlow ? priorityFor(entry.code) : undefined} />
                   </motion.div>
                 ))}
               </motion.div>

@@ -215,6 +215,69 @@ describe("runPostRejectionFlow — Code 9, wrong-form branch (ticket 17)", () =>
   });
 });
 
+describe("runPostRejectionFlow — Code 10 (unmatched reason), all self-checks clean, ticket 10", () => {
+  // Written BEFORE index.ts's Code 10 wiring, deliberately — same discipline as tickets 16/17,
+  // applying the lesson from ticket 15's second review pass (the orchestrator silently
+  // dropping a field despite every lower-level unit test passing) proactively rather than
+  // waiting for a review pass to catch it again.
+  it("generates the Variant F 'demand clarification' grievance, not Variant E", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.diagnosis.selfCheck?.allClean).toBe(true);
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) expect(result.grievance.variant).toBe("F");
+  });
+
+  // Code 10 does NOT suppress the deadline check — unlike Code 8/9, this isn't a claim that
+  // was never going to be settled; EPFO gave a real (if unrecognized) reason, so the normal
+  // 3/20-day clock still applies, same as Code 7.
+  it("still computes the deadline normally for Code 10", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.deadline).toBeDefined();
+  });
+});
+
+describe("runPostRejectionFlow — Code 10, an issue found", () => {
+  it("generates a Variant A grievance for the found issue, same shape as Code 7's issue-found path", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+      self_check_answers: {
+        doe_marked: "no",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.diagnosis.selfCheck?.allClean).toBe(false);
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) {
+      expect(result.grievance.variant).toBe("A");
+      expect(result.grievance.body).toMatch(/Date of Exit/);
+    }
+  });
+});
+
 describe("runPostRejectionFlow — exclusive-code dispatch order (ticket 17 review finding)", () => {
   // schema.ts's cross-field validation guarantees at most one of Codes 6/8/9 ever reaches this
   // function on a real (validated) request — this test bypasses that on purpose, the way a
@@ -229,6 +292,28 @@ describe("runPostRejectionFlow — exclusive-code dispatch order (ticket 17 revi
     });
     expect(result.grievance?.ready).toBe(true);
     if (result.grievance?.ready) expect(result.grievance.variant).toBe("D");
+  });
+});
+
+describe("runPostRejectionFlow — self-check all-clean dispatch order (ticket 10 review finding)", () => {
+  // schema.ts guarantees at most one of Codes 7/10 ever reaches this function on a real
+  // (validated) request — this test bypasses that on purpose, same discipline as the Code
+  // 6/9 test above, to lock in that Code 7 always wins regardless of array order (matching
+  // SELF_CHECK_ALL_CLEAN_KIND's declared key order), rather than depending on schema.ts alone.
+  it("still resolves Code 7 (Variant E) first even when it appears after Code 10 in the array", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON", "CODE_7_NO_REASON"],
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) expect(result.grievance.variant).toBe("E");
   });
 });
 

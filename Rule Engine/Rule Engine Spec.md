@@ -11,7 +11,7 @@
 The rule engine takes a citizen's own report of their EPFO Provident Fund claim — the rejection remark EPFO showed them, or the state of their KYC and claim records before they file — and turns it into a plain-language diagnosis and a ready-to-use next step. It has **two entry points**: the **post-rejection decoder** (the citizen already has a rejection) and the **pre-filing readiness check** (the citizen has not filed yet, and wants to check first). Both entry points share the same underlying rule library.
 
 The engine has **four core functions**:
-1. **Diagnose** — match what the citizen reports to one of 6 known rejection/failure codes (a 7th "no reason given" fallback, or an 8th/9th — eligibility, wrong form — added in tickets 16/17), and explain it in plain language.
+1. **Diagnose** — match what the citizen reports to one of 6 known rejection/failure codes (a 7th "no reason given" fallback; an 8th/9th — eligibility, wrong form — added in tickets 16/17; or a 10th "reason given, not recognized" fallback added in ticket 10), and explain it in plain language.
 2. **Prioritize** — when the citizen reports more than one code at once, rank them so the citizen fixes the real blocker first, not a secondary one (H10).
 3. **Check deadline and penalty** — compare the citizen's filing date against EPFO's 3-day or 20-day settlement rule, and flag a missed deadline and its 12% penalty (H11).
 4. **Generate grievance text** — produce ready-to-paste EPFiGMS grievance text, tailored to the diagnosed code and citing the missed deadline when one applies (H13).
@@ -26,7 +26,7 @@ The engine has **four core functions**:
 | `uan` | string (UAN, typically 12 digits) | Optional for diagnosis only; **Required** to generate grievance text | Used to fill the grievance template. |
 | `claim_id` | string | Optional for diagnosis only; **Required** to generate grievance text | Used to fill the grievance template. |
 | `claim_type` | enum: `Form 19`, `Form 10C`, `Form 31`, `unsure` | Optional | Context only. Not used for branching — the exact claim-type eligibility conditions for the 3-day settlement rule are not yet confirmed (see Section 9, gap 2). |
-| `rejection_codes_selected` | set of enum: `code1`…`code9` | **Required** for `post_rejection` | Multi-select. See Section 3 for code definitions. `code6`, `code7`, `code8` (ticket 16), and `code9` (ticket 17) cannot be selected alongside another code, or each other (see Section 4). |
+| `rejection_codes_selected` | set of enum: `code1`…`code10` | **Required** for `post_rejection` | Multi-select. See Section 3 for code definitions. `code6`, `code7`, `code8` (ticket 16), `code9` (ticket 17), and `code10` (ticket 10) cannot be selected alongside another code, or each other (see Section 4). |
 | `filing_date` | date | **Required** for `post_rejection` (feeds H11 check) | The date the citizen filed the claim now under review. |
 | `kyc_complete_at_filing` | boolean | **Required** for `post_rejection` (feeds H11 check) | Citizen-reported: was their KYC complete when they filed? Drives the 3-day vs. 20-day branch. |
 | `today_date` | date | System-provided | Not entered by the citizen. |
@@ -35,9 +35,9 @@ The engine has **four core functions**:
 | `bank_kyc_submission_date` | date | **Required if `code3` selected AND `bank_account_type` is not `joint`** | Feeds the 3-band wait-time check in Section 3, Code 3. Not needed for a joint-account rejection. |
 | `eligibility_issue_type` | enum: `under_six_months`, `over_nine_half_years`, `unsure` | **Required if `code8` selected** (ticket 16, ~2026-09-01) | Answers Code 8's branching sub-question (Section 3, Code 8). The two named thresholds have opposite remedies, so `unsure` gets its own branch rather than defaulting to either. |
 | `withdrawal_intent` | enum: `full_settlement`, `pension_only`, `advance`, `unsure` | **Required if `code9` selected** (ticket 17, ~2026-09-01) | Answers Code 9's branching sub-question (Section 3, Code 9) — what the citizen is actually trying to withdraw, not which form they filed. The three intents point to different forms, so `unsure` gets its own branch rather than guessing. |
-| `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across both cases (Section 3, Code 7; Section 7). Not extended to cover Code 8 (ticket 16) or Code 9 (ticket 17) — out of scope for both tickets. |
+| `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` or `code10` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across all three cases (Section 3, Codes 7 and 10; Section 7) — Code 10 (ticket 10) shares Code 7's self-check mechanics exactly. Not extended to cover Code 8 (ticket 16) or Code 9 (ticket 17) — out of scope for both tickets. |
 
-**The 5-item self-check checklist** (used by Code 7 and by the pre-filing entry point — same fields, same logic):
+**The 5-item self-check checklist** (used by Codes 7 and 10 (ticket 10), and by the pre-filing entry point — same fields, same logic):
 - `doe_marked` — "Is your Date of Exit marked?"
 - `kyc_verified_not_just_approved` — "Is your KYC verified, not just approved?"
 - `name_dob_fathername_consistent` — "Is your name / DOB / father's name consistent across Aadhaar, UAN, PAN, and bank records?"
@@ -190,11 +190,30 @@ Each row: trigger, plain-language explanation copy (draft), recommended fix, and
 
 **Not extended to the self-check checklist or pre-filing flow, and not a general pre-filing form-picker** — out of scope for this ticket. This code only fires once a citizen already has a rejection remark pointing at wrong-form selection.
 
+### Code 10 — "I see a reason, but it's not listed here" (ticket 10, ~2026-09-01)
+
+**Trigger:** the citizen sees a real EPFO remark, but it doesn't match any of Codes 1–9 above. Distinct from Code 7: Code 7 is for when EPFO shows **no** remark at all; Code 10 is for a remark that exists but isn't one the tool recognizes yet. Coverage gap found auditing the shipped build — the 15-case test sample can't guarantee full real-world coverage, and a citizen hitting an unmodeled remark previously had no honest option (force-fitting a wrong code, or picking Code 7, which is factually wrong when EPFO did explain).
+
+**Sub-flow: identical to Code 7's** — run the same 5-item self-check checklist (Section 2), routing each failed check to that code's explanation/fix, same as Code 7 (including the Code 3 general-text footnote). The bucketing logic is code-agnostic; only the downstream copy differs from Code 7.
+
+- **If every check comes back clean:**
+  - *Explanation:* "The reason EPFO gave doesn't match a cause this tool recognizes, and none of the common causes turned up an issue either, as far as you can tell from your own records. EPFO's stated reason isn't specific enough to act on."
+  - *Fix:* "File a grievance through EPFiGMS asking EPFO to clarify the specific corrective action needed — reference the exact remark EPFO showed you, and note that you've already ruled out the common causes on your own." (Generates Variant F — see Section 6. Must NOT reuse Variant E's "EPFO did not state a reason" wording, which is false here.)
+- **If any check comes back `unsure`:** same treatment as Code 7 — tell the citizen which item(s) to double-check first.
+
+**Exclusivity:** mutually exclusive with every other code, including Codes 6, 7, 8, and 9 (Section 4).
+
+**Deadline check:** runs normally for this code, unlike Codes 8/9 — EPFO gave a real (if unrecognized) reason, so the claim was not inherently unsettleable the way an ineligible or wrong-form claim was. Not added to `DEADLINE_SUPPRESSED_CODES`.
+
+**Grievance:** Variant F when self-checks come back clean (Section 6); Variant A when a self-check finds a real issue, same as Code 7's issue-found path.
+
+**Not extended past this ticket's scope:** no free-text capture of the citizen's actual EPFO remark (avoids a new PII surface); no automated new-code detection (see ticket 18 for the volume-signal follow-up this enables).
+
 ---
 
 ## 4. Priority-Check Logic (H10)
 
-Applies only when `rejection_codes_selected` contains **2 or more** of Codes 1, 2, 3, 4, 5. (Codes 6, 7, 8 (ticket 16), and 9 (ticket 17) are mutually exclusive with the other codes at the UI level — a claim cannot be simultaneously "rejected with reason X" and "approved but not credited," "no reason given," "ineligible," or "wrong form filed.")
+Applies only when `rejection_codes_selected` contains **2 or more** of Codes 1, 2, 3, 4, 5. (Codes 6, 7, 8 (ticket 16), 9 (ticket 17), and 10 (ticket 10) are mutually exclusive with the other codes at the UI level — a claim cannot be simultaneously "rejected with reason X" and "approved but not credited," "no reason given," "ineligible," "wrong form filed," or "a reason given but not recognized.")
 
 **The two tiers, from PRD §7a item 2:**
 - **Tier 1 — blocks eligibility first:** Code 2 (Date of Exit not marked), Code 5 (old claim pending). These are checked earlier in EPFO's process — a claim cannot even be considered eligible for processing until these clear.
@@ -330,6 +349,16 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 >
 > {DEADLINE_CITATION, if applicable}
 
+### Variant F — "demand clarification" (Code 10, ticket 10, all self-checks clean)
+
+Deliberately does NOT reuse Variant E's "EPFO's claim status did not state a reason" line — that's factually false for Code 10, where EPFO did state a reason, just not one this tool recognizes.
+
+> Subject: Grievance — PF claim rejected, stated reason unclear — Claim ID {CLAIM_ID}
+>
+> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}), filed on {filing_date}, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information.
+>
+> {DEADLINE_CITATION, if applicable}
+
 ---
 
 ## 7. Pre-Filing Readiness-Check Flow (H14)
@@ -383,14 +412,19 @@ No priority ranking (Section 4) applies here — the pre-filing flow surfaces ev
 flowchart TD
     A["Citizen opens decoder: post-rejection"] --> B{"Select rejection remark(s) EPFO showed"}
     B -->|"Codes 1-6, one or more"| C{"More than one code selected?"}
-    B -->|"Code 7: I don't see a reason"| D["Run 5-item self-check"]
+    B -->|"Code 7: I don't see a reason"| D["Run 5-item self-check
+    (shared by Codes 7 and 10)"]
+    B -->|"Code 10: reason given, not recognized (ticket 10)"| D
     B -->|"Code 8: eligibility/service-period issue"| CE["Ask eligibility issue type -
     under 6 months / over 9.5 years / unsure (ticket 16)"]
     B -->|"Code 9: wrong form filed"| CG["Ask withdrawal intent -
     full settlement / pension only / advance / unsure (ticket 17)"]
 
     D -->|"Issue found on a check"| E["Route to that code's explanation + fix"]
-    D -->|"All checks clean"| F["Prepare Variant E: demand the real reason"]
+    D -->|"All checks clean"| F{"Which code triggered this?"}
+    F -->|"Code 7"| F7["Prepare Variant E: demand the real reason"]
+    F -->|"Code 10"| F10["Prepare Variant F: demand clarification -
+    must not reuse Variant E's wording"]
     D -->|"Any check unsure"| DU["Tell citizen which item to double-check first"]
 
     CE --> CF["Show branch-specific explanation + fix -
@@ -424,12 +458,13 @@ flowchart TD
     Q --> S
     R --> S
     E --> S
+    F7 --> S
+    F10 --> S
 
     S --> T["Run deadline/penalty check - Section 5"]
     T --> U["Show deadline result; flag 12% penalty if missed"]
 
-    F --> V["Generate grievance text - Section 6"]
-    U --> V
+    U --> V["Generate grievance text - Section 6"]
     V --> W["Citizen copies grievance text into EPFiGMS"]
 ```
 

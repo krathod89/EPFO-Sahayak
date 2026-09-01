@@ -13,7 +13,7 @@ import { SUGGESTED_CATEGORY_BY_CODE, type SuggestedCategory } from "./codes";
 import type { DeadlineResult } from "./deadline";
 import type { ISODate, RuleCode } from "./types";
 
-export type GrievanceVariant = "A" | "B" | "C" | "D" | "E";
+export type GrievanceVariant = "A" | "B" | "C" | "D" | "E" | "F";
 export type { SuggestedCategory } from "./codes";
 export { SUGGESTED_CATEGORY_CAVEAT } from "./codes";
 
@@ -39,6 +39,7 @@ export type VariantKind =
   | { type: "portal_sync_bug" } // Variant C — Code 1, portal-sync-bug branch
   | { type: "approved_not_credited" } // Variant D — Code 6
   | { type: "demand_reason" } // Variant E — Code 7, all self-checks clean
+  | { type: "demand_clarification" } // Variant F — Code 10 (ticket 10), all self-checks clean
   | { type: "joint_account" } // No grievance variant — Code 3, joint-account branch (ticket 15). Always not_applicable; see buildVariantContent.
   | { type: "eligibility" } // No grievance variant — Code 8 (ticket 16). Always not_applicable — a genuine eligibility rule can't be overridden by a grievance.
   | { type: "wrong_form" }; // No grievance variant — Code 9 (ticket 17). Always not_applicable — the fix is refiling under the correct form, not escalating.
@@ -79,6 +80,8 @@ function suggestedCategoryFor(kind: VariantKind): SuggestedCategory {
         return "CODE_6_APPROVED_NOT_CREDITED";
       case "demand_reason":
         return "CODE_7_NO_REASON";
+      case "demand_clarification":
+        return "CODE_10_UNLISTED_REASON";
       case "eligibility":
         return "CODE_8_ELIGIBILITY";
       case "wrong_form":
@@ -154,6 +157,16 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
         variant: "E",
         subject: `Grievance — PF claim rejected with no reason given — Claim ID ${claim_id}`,
         core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}), filed on ${filing_date}, was rejected. EPFO's claim status did not state a reason. I have checked my own records for the common causes of rejection — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to state the specific reason my claim was rejected, and to reprocess my claim once I have that information.`,
+      };
+
+    // Variant F (ticket 10) — Code 10 is for a citizen who sees a REAL EPFO remark that just
+    // isn't one of the modeled codes. This must NOT reuse Variant E's "did not state a
+    // reason" wording — that would be factually false here, since EPFO did state a reason.
+    case "demand_clarification":
+      return {
+        variant: "F",
+        subject: `Grievance — PF claim rejected, stated reason unclear — Claim ID ${claim_id}`,
+        core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}), filed on ${filing_date}, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information.`,
       };
   }
 }

@@ -59,6 +59,46 @@ describe("POST /api/diagnose — post_rejection", () => {
     );
   });
 
+  // A code-review pass on ticket 10 found this branch never fired self_check_submitted at
+  // all, for Code 7 or Code 10 — a pre-existing gap (predating this ticket) that this ticket's
+  // own Analytics section had wrongly claimed was already covered. Fixed, and locked in here.
+  it("fires self_check_submitted for a post_rejection request that ran the self-check sub-flow (Code 10)", async () => {
+    await POST(
+      jsonRequest({
+        entry_point: "post_rejection",
+        rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+        self_check_answers: {
+          doe_marked: "yes",
+          kyc_verified_not_just_approved: "yes",
+          name_dob_fathername_consistent: "yes",
+          eps_history_continuous: "yes",
+          old_claim_pending: "no",
+        },
+        filing_date: "2026-08-01",
+        kyc_complete_at_filing: true,
+        today_date: "2026-08-10",
+        session_id: "sess-6",
+      })
+    );
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
+    expect(eventTypes).toContain("self_check_submitted");
+  });
+
+  it("does not fire self_check_submitted for a code that doesn't use the self-check sub-flow", async () => {
+    await POST(
+      jsonRequest({
+        entry_point: "post_rejection",
+        rejection_codes_selected: ["CODE_2_DOE"],
+        filing_date: "2026-08-01",
+        kyc_complete_at_filing: true,
+        today_date: "2026-08-10",
+        session_id: "sess-7",
+      })
+    );
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
+    expect(eventTypes).not.toContain("self_check_submitted");
+  });
+
   it("still returns the diagnosis when no session_id is present", async () => {
     // trackServerEvent's own no-op-without-a-sessionId behavior is unit-tested in
     // lib/analytics.test.ts — this only confirms the route doesn't depend on it being called.
@@ -135,6 +175,41 @@ describe("POST /api/diagnose — post_rejection", () => {
     const eventTypes = trackMock.mock.calls.map((call) => call[1]);
     expect(eventTypes).toContain("diagnosis_shown");
     expect(eventTypes).not.toContain("deadline_check_shown");
+  });
+
+  // Code 10 (ticket 10) shares Code 7's self-check mechanics but must NOT share Code 8/9's
+  // deadline suppression — EPFO gave a real (if unrecognized) reason here, so the normal
+  // clock still applies. Added at this HTTP-boundary layer proactively, applying ticket 16's
+  // own lesson (a route.ts regression here closed the gap after a review pass first found it
+  // missing) rather than waiting for a review pass to flag the same gap shape again.
+  it("still computes and returns the deadline for a Code 10 (unmatched reason) rejection", async () => {
+    const res = await POST(
+      jsonRequest({
+        entry_point: "post_rejection",
+        uan: "UAN123",
+        claim_id: "CLAIM1",
+        rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+        self_check_answers: {
+          doe_marked: "yes",
+          kyc_verified_not_just_approved: "yes",
+          name_dob_fathername_consistent: "yes",
+          eps_history_continuous: "yes",
+          old_claim_pending: "no",
+        },
+        filing_date: "2026-08-01",
+        kyc_complete_at_filing: true,
+        today_date: "2026-08-10",
+        session_id: "sess-5",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deadline).toBeDefined();
+    expect(body.grievance.ready).toBe(true);
+    expect(body.grievance.variant).toBe("F");
+
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
+    expect(eventTypes).toContain("deadline_check_shown");
   });
 
   it("rejects a request combining Code 6 with another code", async () => {

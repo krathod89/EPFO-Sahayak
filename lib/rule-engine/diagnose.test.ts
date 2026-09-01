@@ -282,3 +282,47 @@ describe("diagnose — Code 9 (wrong form filed), ticket 17", () => {
     expect(result.entries[0]!.explanation).toMatch(/Form 31/);
   });
 });
+
+describe("diagnose — Code 10 (unmatched reason) self-check sub-flow, ticket 10", () => {
+  // Same self-check mechanics as Code 7's block above — Code 10 is for a citizen who sees a
+  // REAL EPFO remark that just isn't one of the modeled codes, not "no remark at all." The
+  // bucketing logic itself is code-agnostic (same 5-item checklist either way); only the
+  // downstream copy (grievance.ts Variant F, Wizard.tsx's all-clean text) differs from Code 7.
+  it("returns allClean=true and no issues when every check passes", () => {
+    const result = diagnose({
+      codes: ["CODE_10_UNLISTED_REASON"],
+      today_date: "2026-08-29",
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.selfCheck).toBeDefined();
+    expect(result.selfCheck!.allClean).toBe(true);
+    expect(result.selfCheck!.issueEntries).toHaveLength(0);
+  });
+
+  it("routes a failed check to that code's explanation/fix, same as Code 7", () => {
+    const result = diagnose({
+      codes: ["CODE_10_UNLISTED_REASON"],
+      today_date: "2026-08-29",
+      self_check_answers: {
+        doe_marked: "no",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.selfCheck!.allClean).toBe(false);
+    expect(result.selfCheck!.issueEntries).toHaveLength(1);
+    expect(result.selfCheck!.issueEntries[0]!.code).toBe("CODE_2_DOE");
+  });
+
+  it("throws if Code 10 is selected without self-check answers", () => {
+    expect(() => diagnose({ codes: ["CODE_10_UNLISTED_REASON"], today_date: "2026-08-29" })).toThrow();
+  });
+});

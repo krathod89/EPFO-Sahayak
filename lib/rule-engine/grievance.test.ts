@@ -253,3 +253,20 @@ describe("buildGrievance — Variant E (demand the real reason)", () => {
     }
   });
 });
+
+describe("buildGrievance — Variant F (demand clarification), ticket 10", () => {
+  // Code 10 is for a citizen who saw a REAL EPFO remark that just isn't one of the modeled
+  // codes — Variant F must not claim "did not state a reason" (Variant E's wording), which
+  // is factually false here: EPFO did give a reason, it's just unrecognized by this tool.
+  it("builds the unmatched-reason text listing the 5 checked causes, without Variant E's false claim", () => {
+    const result = buildGrievance({ ...base, kind: { type: "demand_clarification" } });
+    expect(result.ready).toBe(true);
+    if (result.ready) {
+      expect(result.variant).toBe("F");
+      expect(result.body).toMatch(/Date of Exit/);
+      expect(result.body).toMatch(/EPS contribution history/);
+      expect(result.body).not.toMatch(/did not state a reason/i);
+      expect(result.suggestedCategory).toBe("PF Withdrawal");
+    }
+  });
+});
