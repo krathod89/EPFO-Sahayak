@@ -18,11 +18,11 @@ describe("dateInputError", () => {
   });
 
   it("rejects a future date", () => {
-    expect(dateInputError("2027-12-25", TODAY)).toBe("This date is in the future — please check it.");
+    expect(dateInputError("2027-12-25", TODAY)).toBe("This date is in the future. Please check it.");
   });
 
   it("rejects a date before EPFO's UAN system existed", () => {
-    expect(dateInputError("1999-01-01", TODAY)).toBe("That date looks too far in the past — please check it.");
+    expect(dateInputError("1999-01-01", TODAY)).toBe("That date looks too far in the past. Please check it.");
   });
 
   it("accepts 2001-01-01 exactly (the stated floor)", () => {

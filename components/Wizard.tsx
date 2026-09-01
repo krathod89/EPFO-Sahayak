@@ -16,6 +16,7 @@ import {
   CircleAlert,
   ThumbsUp,
   ThumbsDown,
+  Download,
 } from "lucide-react";
 import { CODE_DEFINITIONS } from "@/lib/rule-engine/codes";
 import type {
@@ -124,7 +125,7 @@ const RULE_CODE_SELECTION_TEXT: Record<RuleCode, string> = {
   CODE_4_EPS: "EPS (pension) contribution shows zero or is missing for a period",
   CODE_5_OLD_CLAIM: "An earlier claim (Form 19 / 10C / 31) is still open in EPFO's system",
   CODE_6_APPROVED_NOT_CREDITED: "Claim was approved but the money never arrived in my account",
-  CODE_7_NO_REASON: "I don't see a reason — EPFO didn't explain",
+  CODE_7_NO_REASON: "I don't see a reason: EPFO didn't explain",
   CODE_8_ELIGIBILITY: "Rejected for not meeting a service-length rule (under 6 months, or over 9.5 years)",
   CODE_9_WRONG_FORM: "Rejected for filing the wrong form (Form 19 / 10C / 31)",
   CODE_10_UNLISTED_REASON: "I see a reason, but it's not listed here",
@@ -161,17 +162,17 @@ const SELF_CHECK_CODES: RuleCode[] = ["CODE_7_NO_REASON", "CODE_10_UNLISTED_REAS
 
 const SELF_CHECK_ALL_CLEAN_COPY: Partial<Record<RuleCode, { title: string; subtitle: string; whatToDo: string }>> = {
   CODE_7_NO_REASON: {
-    title: "Your records look clean — but EPFO didn't say why",
+    title: "Your records look clean, but EPFO didn't say why",
     subtitle: "None of the common causes apply to your case as far as you can tell. EPFO must state the real reason.",
     whatToDo:
-      "File a grievance through EPFiGMS that explicitly asks EPFO to state the actual reason for the rejection. Do not guess a fix — demand the reason first. The grievance text on the next screen is ready for this.",
+      "File a grievance through EPFiGMS that explicitly asks EPFO to state the actual reason for the rejection. Do not guess a fix. Demand the reason first. The grievance text on the next screen is ready for this.",
   },
   CODE_10_UNLISTED_REASON: {
-    title: "Your records look clean — but the reason doesn't match a known cause",
+    title: "Your records look clean, but the reason doesn't match a known cause",
     subtitle:
       "The reason EPFO gave doesn't match a cause we recognize, and none of the common causes turned up an issue either.",
     whatToDo:
-      "File a grievance through EPFiGMS asking EPFO to clarify the specific corrective action needed — the reason given isn't specific enough to act on. The grievance text on the next screen is ready for this.",
+      "File a grievance through EPFiGMS asking EPFO to clarify the specific corrective action needed. The reason given isn't specific enough to act on. The grievance text on the next screen is ready for this.",
   },
 };
 
@@ -191,7 +192,7 @@ const SELF_CHECK_UI_ITEMS: SelfCheckUiItem[] = [
   },
   {
     key: "kyc_verified_not_just_approved",
-    question: "Is your KYC verified — not just approved, but verified?",
+    question: "Is your KYC verified (not just approved, but verified)?",
     hint: 'On the UAN portal, look for "Verified" status, not just "Approved".',
     passAnswer: "yes",
   },
@@ -591,8 +592,9 @@ function Shell({
             <ProgressBar step={step} total={totalSteps} />
             <div className="flex items-center justify-between mt-2">
               <span className="text-xs text-warm-600 font-medium">{label ?? `Step ${step} of ${totalSteps}`}</span>
-              {/* Brand mark: Inter, matching the landing hero — one typographic identity
-                  independent of Fraunces on the actual question headings. */}
+              {/* Brand mark: font-sans (IBM Plex Sans), matching the landing hero's "EPFO" line —
+                  one typographic identity independent of font-display on the actual question
+                  headings. */}
               <span className="text-xs font-bold text-warm-400 font-sans tracking-wide">Sahayak</span>
             </div>
           </div>
@@ -604,7 +606,12 @@ function Shell({
             <BackBtn onClick={onBack} />
           </div>
         )}
-        {children}
+        {/* my-auto (not justify-center on the parent) so a short screen's content centers in
+            the leftover space below Back, but a long screen's content still starts flush at
+            the top and scrolls normally — justify-center on an overflowing flex container
+            centers past the top edge and clips it above the scroll position; auto margins
+            collapse to 0 instead once content no longer fits, degrading safely. */}
+        <div className="my-auto">{children}</div>
       </div>
     </div>
   );
@@ -708,14 +715,43 @@ function DeadlineCard({ deadline, filingDate, kycComplete }: { deadline: Deadlin
       </div>
       <p className={cn("text-sm leading-relaxed", missed ? "text-red-700" : "text-green-700")}>
         {missed
-          ? `You filed your claim on ${fmtIsoDate(filingDate)}. Because your KYC was ${kycComplete ? "complete" : "not complete"} when you filed, EPFO had to settle within ${deadline.deadlineDays} days — by ${fmtIsoDate(deadline.deadlineDate)}. EPFO has missed this deadline by ${deadline.daysLate} day(s).`
-          : `You filed your claim on ${fmtIsoDate(filingDate)}. EPFO must settle within ${deadline.deadlineDays} days — by ${fmtIsoDate(deadline.deadlineDate)}. EPFO still has ${deadline.daysRemaining} day(s) left.`}
+          ? `You filed your claim on ${fmtIsoDate(filingDate)}. Because your KYC was ${kycComplete ? "complete" : "not complete"} when you filed, EPFO had to settle within ${deadline.deadlineDays} days, by ${fmtIsoDate(deadline.deadlineDate)}. EPFO has missed this deadline by ${deadline.daysLate} day(s).`
+          : `You filed your claim on ${fmtIsoDate(filingDate)}. EPFO must settle within ${deadline.deadlineDays} days, by ${fmtIsoDate(deadline.deadlineDate)}. EPFO still has ${deadline.daysRemaining} day(s) left.`}
       </p>
       {missed && (
         <div className="mt-3 rounded-xl bg-red-100 border border-red-200 px-3.5 py-3 text-xs text-red-800 leading-relaxed font-medium">
           You may be owed 12% penalty interest on your claim amount for this delay. Ask for this by name when you file your grievance.
         </div>
       )}
+      {/* Sourced live 2026-09-01: the official PIB release for the June 2026 EPF Scheme reform
+          (the 3/20-day deadline + 12% penal-interest rule itself) and EPFO's own FAQ page
+          (confirms the 20-day figure directly, and who to report a miss to). Deliberately not
+          citing every fact this way — only where a genuine official source is actually live;
+          see CODE_3_INTRO's own comment for a fact that still has no live official document. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <a
+          href="https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=2234502&reg=3&lang=2"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors",
+            missed ? "text-red-700 hover:text-red-800" : "text-green-700 hover:text-green-800"
+          )}
+        >
+          Official notification (PIB) <ExternalLink className="size-3" />
+        </a>
+        <a
+          href="https://www.epfo.gov.in/faq-epfo"
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            "inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors",
+            missed ? "text-red-700 hover:text-red-800" : "text-green-700 hover:text-green-800"
+          )}
+        >
+          EPFO&apos;s own FAQ <ExternalLink className="size-3" />
+        </a>
+      </div>
     </div>
   );
 }
@@ -842,7 +878,7 @@ function FeedbackWidget({
       {sentiment && (
         <div className="space-y-2">
           <label htmlFor="feedback-comment" className="block text-xs text-warm-500">
-            Anything else? (optional — please don&apos;t include your UAN, claim ID, or other personal details)
+            Anything else? (optional; please don&apos;t include your UAN, claim ID, or other personal details)
           </label>
           <textarea
             id="feedback-comment"
@@ -1060,17 +1096,15 @@ export default function Wizard() {
     const landingBody = (
       <>
         <div className="animate-slide-up">
-          <div className="inline-flex items-center gap-2 bg-accent-500 text-white px-3 py-1 rounded-full text-xs font-semibold mb-5 tracking-wide">
-            <Shield className="size-3" />
+          <div className="inline-flex items-center gap-1.5 text-accent-700 text-xs font-semibold mb-5 tracking-wide">
+            <Shield className="size-3.5" />
             Free · No account needed
           </div>
-          <h1 className="font-sans text-4xl font-extrabold text-warm-900 leading-tight tracking-tighter">
-            EPFO
-            <br />
-            Sahayak
+          <h1 className="font-sans text-4xl font-extrabold text-warm-900 leading-tight tracking-tighter whitespace-nowrap">
+            EPFO <span className="font-display italic font-semibold text-accent-600">Sahayak</span>
           </h1>
           <p className="text-warm-600 text-lg mt-3 leading-relaxed">
-            Turn a confusing PF rejection into a clear, actionable plan — or check if you're ready to file.
+            Turn a confusing PF rejection into a clear, actionable plan, or check if you're ready to file.
           </p>
         </div>
 
@@ -1111,16 +1145,14 @@ export default function Wizard() {
               setDirection(1);
               setS(push({ ...s, path: "A" }, "selectCodes"));
             }}
-            className="w-full group rounded-2xl border-2 border-warm-200 bg-white hover:border-accent-500 hover:shadow-md transition-all duration-200 text-left px-5 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+            className="w-full group rounded-2xl border-2 border-l-4 border-warm-200 border-l-red-300 bg-white hover:border-accent-500 hover:border-l-red-400 hover:shadow-md transition-all duration-200 text-left px-5 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="size-8 rounded-xl bg-red-100 flex items-center justify-center">
-                    <CircleAlert className="size-4 text-red-500" />
-                  </span>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <CircleAlert className="size-[18px] text-red-500 shrink-0" />
+                  <h2 className="font-sans font-bold text-xl text-warm-900 leading-snug tracking-tight">My claim was rejected</h2>
                 </div>
-                <h2 className="font-sans font-bold text-xl text-warm-900 leading-snug tracking-tight">My claim was rejected</h2>
                 <p className="text-sm text-warm-600 mt-1 leading-relaxed">
                   Decode the rejection reason, find out who's at fault, check if EPFO missed its own deadline, and get grievance
                   text ready to paste.
@@ -1136,18 +1168,16 @@ export default function Wizard() {
               setDirection(1);
               setS(push({ ...s, path: "B" }, "selfCheck"));
             }}
-            className="w-full group rounded-2xl border-2 border-warm-200 bg-white hover:border-accent-500 hover:shadow-md transition-all duration-200 text-left px-5 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+            className="w-full group rounded-2xl border-2 border-l-4 border-warm-200 border-l-green-300 bg-white hover:border-accent-500 hover:border-l-green-400 hover:shadow-md transition-all duration-200 text-left px-5 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="size-8 rounded-xl bg-green-100 flex items-center justify-center">
-                    <CheckCircle2 className="size-4 text-green-600" />
-                  </span>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <CheckCircle2 className="size-[18px] text-green-600 shrink-0" />
+                  <h2 className="font-sans font-bold text-xl text-warm-900 leading-snug tracking-tight">I haven't filed yet</h2>
                 </div>
-                <h2 className="font-sans font-bold text-xl text-warm-900 leading-snug tracking-tight">I haven't filed yet</h2>
                 <p className="text-sm text-warm-600 mt-1 leading-relaxed">
-                  Check five common blockers before you file — so your claim doesn't come back rejected.
+                  Check five common blockers before you file, so your claim doesn't come back rejected.
                 </p>
               </div>
               <ArrowRight className="size-5 text-warm-400 shrink-0 mt-1 group-hover:text-accent-500 transition-colors" />
@@ -1169,7 +1199,7 @@ export default function Wizard() {
             <p className="text-xs font-semibold uppercase tracking-wider text-warm-600">How it works</p>
             <div className="space-y-5">
               {[
-                { title: "Tell us what happened", body: "Pick the rejection reason EPFO showed you — or tell us you haven't filed yet." },
+                { title: "Tell us what happened", body: "Pick the rejection reason EPFO showed you, or tell us you haven't filed yet." },
                 { title: "Answer a few questions", body: "About your filing date and KYC status. Takes under two minutes." },
                 { title: "Get your fix", body: "A plain-language diagnosis, a deadline check, and grievance text ready to paste." },
               ].map((step, i) => (
@@ -1223,9 +1253,9 @@ export default function Wizard() {
       const isExclusive = MUTUALLY_EXCLUSIVE_CODES.includes(id);
       const disabled = (!checked && isExclusive && hasOtherThanExclusive) || (!checked && !isExclusive && hasExclusive);
       const disabledReason = !checked && isExclusive && hasOtherThanExclusive
-        ? "Not available — deselect your other reason(s) first, since this one can't be combined."
+        ? "Not available: deselect your other reason(s) first, since this one can't be combined."
         : !checked && !isExclusive && hasExclusive
-          ? "Not available — the reason you picked must be used on its own."
+          ? "Not available: the reason you picked must be used on its own."
           : undefined;
 
       return (
@@ -1312,9 +1342,9 @@ export default function Wizard() {
                 key={v}
                 label={
                   v === "approved_and_verified"
-                    ? "Yes — it says Approved and Verified"
+                    ? "Yes, it says Approved and Verified"
                     : v === "not_verified"
-                      ? "No — it does not show Verified"
+                      ? "No, it does not show Verified"
                       : "I'm not sure / I can't find it"
                 }
                 checked={s.namedobKycPageStatus === v}
@@ -1344,8 +1374,8 @@ export default function Wizard() {
             <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Bank KYC not verified</p>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">Is the bank account in your name only?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              EPFO only pays into an account held solely by you. A joint account — one with more than one holder, even if you&apos;re
-              one of them — is rejected outright, regardless of KYC status.
+              EPFO only pays into an account held solely by you. A joint account (one with more than one holder, even if you&apos;re
+              one of them) is rejected outright, regardless of KYC status.
             </p>
           </div>
 
@@ -1355,9 +1385,9 @@ export default function Wizard() {
                 key={v}
                 label={
                   v === "individual"
-                    ? "Yes — it's in my name only"
+                    ? "Yes, it's in my name only"
                     : v === "joint"
-                      ? "No — it's a joint account"
+                      ? "No, it's a joint account"
                       : "I'm not sure"
                 }
                 checked={s.bankAccountType === v}
@@ -1385,7 +1415,7 @@ export default function Wizard() {
             <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Bank KYC not verified</p>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">When did you submit your bank KYC?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              This is the date your bank details were submitted for verification — either by you on the UAN portal, or entered by
+              This is the date your bank details were submitted for verification: either by you on the UAN portal, or entered by
               your employer on your behalf. Verification itself is done by your bank and NPCI, not your employer. An approximate
               date is fine.
             </p>
@@ -1437,7 +1467,7 @@ export default function Wizard() {
             <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Not eligible yet, or eligible for pension instead</p>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">What does EPFO&apos;s remark say about your service length?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              This determines the fix — the two rules below have different remedies. Check your service history on the UAN portal
+              This determines the fix: the two rules below have different remedies. Check your service history on the UAN portal
               if you&apos;re not sure.
             </p>
           </div>
@@ -1480,7 +1510,7 @@ export default function Wizard() {
             <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Wrong claim form filed</p>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">What are you actually trying to withdraw?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              This determines which form actually fits your situation — Form 19, 10C, and 31 serve different purposes.
+              This determines which form actually fits your situation: Form 19, 10C, and 31 serve different purposes.
             </p>
           </div>
 
@@ -1534,8 +1564,8 @@ export default function Wizard() {
               {isPathB
                 ? "Let's check five common blockers"
                 : isCode10
-                  ? "Not a reason we recognize — let's check ourselves"
-                  : "EPFO didn't explain — let's check ourselves"}
+                  ? "Not a reason we recognize: let's check ourselves"
+                  : "EPFO didn't explain: let's check ourselves"}
             </h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
               {isPathB
@@ -1592,7 +1622,7 @@ export default function Wizard() {
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">When did you file this claim?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
               {suppressesDeadline
-                ? "EPFO's settlement deadline and penalty rule don't apply here — we still ask for your filing date to keep your case details complete."
+                ? "EPFO's settlement deadline and penalty rule don't apply here. We still ask for your filing date to keep your case details complete."
                 : "We'll check whether EPFO has already missed its own settlement deadline, and whether you may be owed a 12% penalty."}
             </p>
           </div>
@@ -1660,13 +1690,13 @@ export default function Wizard() {
 
           <div className="space-y-2" role="radiogroup" aria-label="Was your KYC complete when you filed?">
             <RadioCard
-              label="Yes — all KYC was complete and verified"
+              label="Yes, all KYC was complete and verified"
               sublabel={suppressesDeadline ? undefined : "EPFO's 3-day deadline applies"}
               checked={s.kycCompleteAtFiling === true}
               onChange={() => setS({ ...s, kycCompleteAtFiling: true })}
             />
             <RadioCard
-              label="No — KYC was not fully complete"
+              label="No, KYC was not fully complete"
               sublabel={suppressesDeadline ? undefined : "EPFO's 20-day deadline applies"}
               checked={s.kycCompleteAtFiling === false}
               onChange={() => setS({ ...s, kycCompleteAtFiling: false })}
@@ -1841,7 +1871,7 @@ export default function Wizard() {
             </h2>
             <p className="text-warm-600 text-sm mt-1.5 leading-relaxed">
               {grievanceNeverApplicable
-                ? "There's no grievance to file for this — see why below."
+                ? "There's no grievance to file for this. See why below."
                 : "Paste this into the free-text box on EPFiGMS. Fill in your UAN and Claim ID below to personalise it first."}
             </p>
           </div>
@@ -1919,7 +1949,8 @@ export default function Wizard() {
                 <p className="text-xs font-semibold text-accent-700">Where to file</p>
                 <p className="text-xs text-accent-600 leading-relaxed">
                   Go to <strong>EPFiGMS</strong> (epfigms.gov.in). Select your establishment, then look for a category close to{" "}
-                  <strong>&ldquo;{grievance.suggestedCategory}&rdquo;</strong> and paste the text above into the description box.
+                  <strong>&ldquo;{grievance.suggestedCategory}&rdquo;</strong>. Paste the subject line above into the form&apos;s
+                  subject field, and the grievance body into its description box.
                 </p>
                 <p className="text-xs text-accent-600/80 leading-relaxed italic">{SUGGESTED_CATEGORY_CAVEAT}</p>
                 <a
@@ -1931,10 +1962,59 @@ export default function Wizard() {
                   Open EPFiGMS <ExternalLink className="size-3" />
                 </a>
               </div>
+
+              <button
+                onClick={() => window.print()}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-warm-200 bg-white hover:border-accent-500 hover:shadow-sm text-warm-700 text-sm font-semibold py-2.5 transition-all duration-150"
+              >
+                <Download className="size-4" />
+                Save as PDF
+              </button>
+              <p className="text-xs text-warm-500 -mt-2">
+                Opens your browser&apos;s print dialog — choose &ldquo;Save as PDF&rdquo; as the destination. Useful if
+                you&apos;re not filing this right now, or want a copy on a different device.
+              </p>
+
+              {/* Screen-hidden, print-only (see .print-grievance in globals.css) — a clean,
+                  self-contained page for the "Save as PDF" button above. Deliberately plain
+                  (black on white, no app chrome) since it has to work as a standalone document,
+                  not a screenshot of the UI. */}
+              <div className="hidden print:block print-grievance text-black">
+                <h1 className="text-xl font-bold">EPFO Sahayak — Grievance Draft</h1>
+                <p className="text-xs text-gray-600 mt-1">Generated {new Date().toLocaleDateString()} · Not affiliated with EPFO or the Government of India</p>
+                <div className="mt-4 text-sm">
+                  <p>
+                    <strong>UAN:</strong> {s.uan || "—"}
+                  </p>
+                  <p>
+                    <strong>Claim ID:</strong> {s.claimId || "—"}
+                  </p>
+                  <p>
+                    <strong>Suggested EPFiGMS category:</strong> {grievance.suggestedCategory}
+                  </p>
+                </div>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide">Subject line</p>
+                  <p className="text-sm mt-1">{grievance.subject}</p>
+                </div>
+                <div className="mt-4">
+                  <p className="text-xs font-bold uppercase tracking-wide">Grievance body</p>
+                  <p className="text-sm mt-1 whitespace-pre-wrap">{grievance.body}</p>
+                </div>
+                <p className="text-xs text-gray-600 mt-4">
+                  File this at epfigms.gov.in. Paste the subject line into the form&apos;s subject field, and the
+                  grievance body into its description box.
+                </p>
+              </div>
             </>
           ) : null}
 
-          {grievance && grievance.ready && (
+          {/* Was gated on grievance.ready alone, which silently skipped feedback for every
+              not_applicable outcome (Code 8, Code 9, joint-account, wait bands 1-2) — those
+              citizens still received a real diagnosis and fix, just no grievance text, and
+              deserve the same chance to say whether it helped. missing_info is correctly still
+              excluded: nothing has actually been shown to react to yet at that point. */}
+          {grievance && (grievance.ready || grievance.reason === "not_applicable") && (
             <FeedbackWidget
               sessionId={sessionId}
               context="grievance_output"
@@ -1988,12 +2068,12 @@ export default function Wizard() {
                     <CircleAlert className="size-6 text-red-500 shrink-0" />
                   )}
                   <h2 className={cn("font-display font-bold text-xl", status === "ready" ? "text-green-800" : status === "mostly" ? "text-amber-800" : "text-red-800")}>
-                    {status === "ready" ? "Looks ready to file" : status === "mostly" ? `Mostly ready — double-check ${M} thing${M > 1 ? "s" : ""}` : `Found ${N} issue${N > 1 ? "s" : ""} to fix first`}
+                    {status === "ready" ? "Looks ready to file" : status === "mostly" ? `Mostly ready: double-check ${M} thing${M > 1 ? "s" : ""}` : `Found ${N} issue${N > 1 ? "s" : ""} to fix first`}
                   </h2>
                 </div>
                 <p className={cn("text-sm leading-relaxed", status === "ready" ? "text-green-700" : status === "mostly" ? "text-amber-700" : "text-red-700")}>
                   {status === "ready"
-                    ? "Based on what you told us, none of the common blockers apply to your claim. This is not a guarantee — we can't see your actual EPFO record — but you've checked the most common causes of rejection."
+                    ? "Based on what you told us, none of the common blockers apply to your claim. This is not a guarantee (we can't see your actual EPFO record), but you've checked the most common causes of rejection."
                     : status === "mostly"
                       ? "Your claim looks ready, but you weren't sure about a few things. Double-check them before you file."
                       : `Fix ${N === 1 ? "this issue" : "these issues"} before you file. ${M > 0 ? `Also double-check ${M} more thing${M > 1 ? "s" : ""} you were unsure about.` : ""}`}

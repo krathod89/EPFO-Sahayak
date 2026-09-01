@@ -27,12 +27,12 @@ export function dateInputError(value: string | null, today: Date = new Date()): 
   }
   const todayMidnight = new Date(today);
   todayMidnight.setHours(0, 0, 0, 0);
-  if (d.getTime() > todayMidnight.getTime()) return "This date is in the future — please check it.";
+  if (d.getTime() > todayMidnight.getTime()) return "This date is in the future. Please check it.";
   // EPFO's UAN system postdates 2001; anything before that is implausible for a PF claim.
   // Parsed the same way as `d` (local midnight, no Z) so the comparison isn't off by a
   // few hours depending on the browser's timezone relative to UTC.
   if (d.getTime() < new Date("2001-01-01T00:00:00").getTime()) {
-    return "That date looks too far in the past — please check it.";
+    return "That date looks too far in the past. Please check it.";
   }
   return null;
 }

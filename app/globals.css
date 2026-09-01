@@ -1,11 +1,13 @@
 @import "tailwindcss";
 
 /* Font faces are loaded via next/font/google in app/layout.tsx (not a hand-rolled
-   @import/<link> — next/font self-hosts and injects --font-fraunces/--font-inter as CSS
-   variables on <html>, which these theme tokens just point at). */
+   @import/<link> — next/font self-hosts and injects --font-source-serif/--font-plex-sans as
+   CSS variables on <html>, which these theme tokens just point at). Swapped off Fraunces+Inter
+   (design review, 2026-09-01): that exact serif-display/sans-body pairing had become a generic
+   "AI-generated startup" tell rather than a distinctive choice. */
 @theme {
-  --font-display: var(--font-fraunces), Georgia, serif;
-  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-source-serif), Georgia, serif;
+  --font-sans: var(--font-plex-sans), system-ui, -apple-system, sans-serif;
 
   --color-accent-50: #eef8f4;
   --color-accent-100: #d3ede5;
@@ -54,4 +56,26 @@ body {
 
 .animate-slide-up {
   animation: slideUp 0.22s ease-out both;
+}
+
+/* "Save as PDF" on the grievance screen (Wizard.tsx GrievanceScreen) uses window.print()
+   rather than a client-side PDF library — no new dependency, and it produces a real PDF via
+   the browser's own "Save as PDF" print destination, which is what EPFiGMS's own upload field
+   actually accepts (confirmed live: PDF only, 1MB max — a Word export wouldn't be usable there
+   even if generated). The classic "print just one element" technique: hide everything, then
+   un-hide only .print-grievance and its children, positioned to fill the page. The on-screen
+   element itself stays `hidden print:block` (Tailwind) so it never affects normal layout. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-grievance,
+  .print-grievance * {
+    visibility: visible;
+  }
+  .print-grievance {
+    position: absolute;
+    inset: 0;
+    padding: 32px;
+  }
 }
