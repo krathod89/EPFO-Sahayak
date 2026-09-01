@@ -1,6 +1,6 @@
 # 16 — New code: eligibility / service-period not met
 
-**Status:** Open
+**Status:** Done (2026-09-01) — built, tested, merged (PR #14), and verified live in production
 
 Traces to: `spec.md` US1 (extends it — new code, same pattern as ticket 10). Rule logic source to extend: `Rule Engine/Rule Engine Spec.md` §3.
 
@@ -23,5 +23,15 @@ Found during the broader error-code coverage check (2026-08-31). EPFO's own "Tra
 
 ## Done means
 
-- Tests cover the new code's explanation/fix text and confirm it correctly returns "not applicable" (or equivalent) for grievance generation rather than producing misleading escalation copy.
-- Manual read-through: the copy doesn't claim "not your fault" for a case that usually is just a timing issue — matches PRD §4's honesty standard rather than its default tone.
+- [x] Tests cover the new code's explanation/fix text and confirm it correctly returns "not applicable" (or equivalent) for grievance generation rather than producing misleading escalation copy.
+- [x] Manual read-through: the copy doesn't claim "not your fault" for a case that usually is just a timing issue — matches PRD §4's honesty standard rather than its default tone.
+
+## Closeout (2026-09-01)
+
+Numbered `CODE_8_ELIGIBILITY` (not `CODE_9` as this ticket originally speculated) — ticket 10's code hasn't been built yet, so this is sequentially the actual 8th code by build order, not by ticket number. Added `eligibility_issue_type` (`under_six_months` / `over_nine_half_years` / `unsure`) as a real 3-way branch, not a defaulted 2-way one — the two known thresholds have opposite remedies, so guessing wrong would send the citizen down the wrong fix. Mutually exclusive with every other code, joining Codes 6/7. Deadline/penalty check suppressed entirely, exactly as scoped.
+
+**TDD discipline upgraded mid-session**: ticket 15's second review pass had caught a real bug — the orchestrator (`index.ts`) silently dropping a new field it never forwarded to `diagnose()`. This ticket wrote the equivalent orchestrator-level test in `index.test.ts` *before* wiring `index.ts`, specifically to catch that exact class of gap without needing a dedicated review pass. It worked — the test failed immediately in this ticket's own red phase.
+
+Even with that discipline, two code-review passes plus a self-directed sweep still found **4 real bugs**, all the same shape: UI screens unconditionally promising or displaying the deadline check that's deliberately suppressed for this code — `filingDate`'s subtitle/info box, `diagnosisSummary`'s orphaned "calendar days" caveat, `kycAtFiling`'s radio sublabels, and `diagnosisSummary`'s header text directly contradicting Code 8's own "not your fault" framing rule. All fixed. Also fixed: `MUTUALLY_EXCLUSIVE_CODES` was duplicated as two separately-maintained arrays (`schema.ts`, `Wizard.tsx`) — now one shared constant in `types.ts`.
+
+Verified locally (live API + full browser walkthrough) and merged via PR #14. **Verified live in production**: `CODE_8_ELIGIBILITY` returns no `deadline` key at all, correct branch explanation/fix, correct `not_applicable` grievance — matching what shipped.
