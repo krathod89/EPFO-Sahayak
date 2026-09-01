@@ -3,7 +3,7 @@
 
 export type EntryPoint = "post_rejection" | "pre_filing";
 
-/** The 9 selectable rejection/failure codes (spec Section 3). */
+/** The 10 selectable rejection/failure codes (spec Section 3). */
 export type RuleCode =
   | "CODE_1_NAME_DOB"
   | "CODE_2_DOE"
@@ -13,20 +13,22 @@ export type RuleCode =
   | "CODE_6_APPROVED_NOT_CREDITED"
   | "CODE_7_NO_REASON"
   | "CODE_8_ELIGIBILITY"
-  | "CODE_9_WRONG_FORM";
+  | "CODE_9_WRONG_FORM"
+  | "CODE_10_UNLISTED_REASON";
 
 /** Codes that can't be combined with anything else, including each other (spec Section 4) —
  * a claim can't be simultaneously "rejected with reason X" and "approved but not credited,"
- * "no reason given," "ineligible," or "wrong form filed." Single source of truth, imported by
- * both `schema.ts` (server-side validation) and `Wizard.tsx` (client-side selection UI) —
- * ticket 16's own code-review pass found these hand-maintained as two separate literal
- * arrays, one per layer, risking exactly the client/server drift a shared constant exists to
- * prevent. */
+ * "no reason given," "ineligible," "wrong form filed," or "a reason given but not recognized."
+ * Single source of truth, imported by both `schema.ts` (server-side validation) and
+ * `Wizard.tsx` (client-side selection UI) — ticket 16's own code-review pass found these
+ * hand-maintained as two separate literal arrays, one per layer, risking exactly the
+ * client/server drift a shared constant exists to prevent. */
 export const MUTUALLY_EXCLUSIVE_CODES: RuleCode[] = [
   "CODE_6_APPROVED_NOT_CREDITED",
   "CODE_7_NO_REASON",
   "CODE_8_ELIGIBILITY",
   "CODE_9_WRONG_FORM",
+  "CODE_10_UNLISTED_REASON",
 ];
 
 /** Codes for which the deadline/penalty check (H11) is deliberately suppressed, not just
@@ -108,7 +110,8 @@ export interface PostRejectionInput {
   eligibility_issue_type?: EligibilityIssueType;
   /** Required if CODE_9_WRONG_FORM is selected. */
   withdrawal_intent?: WithdrawalIntent;
-  /** Required if CODE_7_NO_REASON is selected. */
+  /** Required if CODE_7_NO_REASON or CODE_10_UNLISTED_REASON is selected — the two share the
+   * same self-check sub-flow (ticket 10). */
   self_check_answers?: SelfCheckAnswers;
 }
 

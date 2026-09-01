@@ -57,7 +57,8 @@ export function hasBranch(entry: DiagnosisEntry, branch: EntryBranch): boolean {
 }
 
 export interface DiagnoseResult {
-  /** Empty when Code 7 was selected — see `selfCheck` instead. */
+  /** Empty when Code 7 or Code 10 was selected (ticket 10, same self-check sub-flow) — see
+   * `selfCheck` instead. */
   entries: DiagnosisEntry[];
   selfCheck?: {
     allClean: boolean;
@@ -153,9 +154,14 @@ export function diagnose(params: DiagnoseParams): DiagnoseResult {
     self_check_answers,
   } = params;
 
-  if (codes.includes("CODE_7_NO_REASON")) {
+  // Code 10 (ticket 10) shares Code 7's self-check mechanics exactly — the bucketing logic
+  // below doesn't care WHY the citizen ended up here (no remark at all, vs. a remark that
+  // isn't one of the 9 modeled codes), only that the same 5-item checklist applies. Which of
+  // the two triggered this is only relevant downstream (grievance.ts's Variant E vs F,
+  // Wizard.tsx's copy), where the caller already has `rejection_codes_selected` to check.
+  if (codes.includes("CODE_7_NO_REASON") || codes.includes("CODE_10_UNLISTED_REASON")) {
     if (!self_check_answers) {
-      throw new Error("self_check_answers is required when CODE_7_NO_REASON is selected");
+      throw new Error("self_check_answers is required when CODE_7_NO_REASON or CODE_10_UNLISTED_REASON is selected");
     }
     const bucket = bucketSelfCheck(self_check_answers);
     const issueEntries = bucket.issues.map(({ code }) => resolveSelfCheckIssueCode(code));

@@ -203,4 +203,60 @@ describe("validatePostRejectionCrossFields", () => {
     });
     expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
   });
+
+  // Ticket 10 (unmatched-reason code): Code 10 shares Code 7's self-check mechanics — a real
+  // remark was given, just not one the tool recognizes — so it's mutually exclusive with
+  // every other code (joining 6/7/8/9) and requires self_check_answers, same as Code 7.
+  it("requires self_check_answers when CODE_10 is selected", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+    });
+    expect(errors.some((e) => e.includes("self_check_answers"))).toBe(true);
+  });
+
+  it("passes when CODE_10 is selected alone with self_check_answers present", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON"],
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects Code 10 combined with Code 7", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON", "CODE_7_NO_REASON"],
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
+  });
+
+  it("rejects Code 10 combined with another code", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_10_UNLISTED_REASON", "CODE_2_DOE"],
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
+  });
 });

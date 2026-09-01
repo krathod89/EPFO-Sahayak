@@ -14,8 +14,8 @@ import { DEADLINE_SUPPRESSED_CODES, type DiagnosableCode, type PostRejectionInpu
 /** Codes that are mutually exclusive with everything else (see `MUTUALLY_EXCLUSIVE_CODES` in
  * types.ts) AND always build one fixed grievance kind, regardless of branch — Code 6
  * (approved, not credited), Code 8 (eligibility, ticket 16), Code 9 (wrong form, ticket 17).
- * Code 7 is exclusive too but runs a structurally different self-check sub-flow, so it's
- * handled separately below, not folded into this table.
+ * Codes 7 and 10 (ticket 10) are exclusive too but run a structurally different self-check
+ * sub-flow, so they're handled separately below, not folded into this table.
  *
  * A code-review pass on ticket 16 flagged the previous shape here — a fresh `else if
  * (input.rejection_codes_selected.includes("CODE_X"))` block hand-added per code — as the
@@ -25,6 +25,20 @@ const EXCLUSIVE_CODE_GRIEVANCE_KIND: Partial<Record<RuleCode, VariantKind>> = {
   CODE_6_APPROVED_NOT_CREDITED: { type: "approved_not_credited" },
   CODE_8_ELIGIBILITY: { type: "eligibility" },
   CODE_9_WRONG_FORM: { type: "wrong_form" },
+};
+
+/** Codes 7 and 10 (ticket 10) share one self-check sub-flow, but the "all checks clean"
+ * grievance kind differs per code (Variant E vs F — Code 10's must not reuse Code 7's "EPFO
+ * did not state a reason" claim, which is false for Code 10). Same table pattern, and same
+ * order-independence guarantee, as EXCLUSIVE_CODE_GRIEVANCE_KIND above — a code-review pass on
+ * this ticket flagged that a raw ternary here would pick whichever of Code 7/10 the ternary
+ * happened to check first, diverging from the declarative, order-independent precedence rule
+ * already established for Codes 6/8/9. schema.ts guarantees at most one of these two reaches
+ * this function on any real request; this table makes a bypassing caller's outcome match that
+ * same guarantee instead of depending on ternary order. */
+const SELF_CHECK_ALL_CLEAN_KIND: Partial<Record<RuleCode, VariantKind>> = {
+  CODE_7_NO_REASON: { type: "demand_reason" },
+  CODE_10_UNLISTED_REASON: { type: "demand_clarification" },
 };
 
 const DIAGNOSABLE_CODES: DiagnosableCode[] = [
@@ -154,15 +168,24 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
       deadline,
       kind: exclusiveKind,
     });
-  } else if (input.rejection_codes_selected.includes("CODE_7_NO_REASON")) {
+  } else if (
+    (Object.keys(SELF_CHECK_ALL_CLEAN_KIND) as RuleCode[]).some((code) => input.rejection_codes_selected.includes(code))
+  ) {
     if (diagnosis.selfCheck?.allClean) {
+      // Same order-independent lookup as exclusiveKind above — see SELF_CHECK_ALL_CLEAN_KIND.
+      // Non-null: this branch's own condition already guarantees one of the table's keys is
+      // present in rejection_codes_selected, so `find` can't return undefined here.
+      const selfCheckCode = (Object.keys(SELF_CHECK_ALL_CLEAN_KIND) as RuleCode[]).find((code) =>
+        input.rejection_codes_selected.includes(code)
+      )!;
+      const kind = SELF_CHECK_ALL_CLEAN_KIND[selfCheckCode]!;
       grievance = buildGrievance({
         uan,
         claim_id: claimId,
         filing_date: input.filing_date,
         today_date: today,
         deadline,
-        kind: { type: "demand_reason" },
+        kind,
       });
     } else if (diagnosis.selfCheck && diagnosis.selfCheck.issueEntries.length > 0) {
       // Spec Section 8a's workflow diagram routes this path (node E) through the deadline

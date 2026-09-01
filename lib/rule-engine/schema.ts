@@ -18,6 +18,7 @@ const ruleCode = z.enum([
   "CODE_7_NO_REASON",
   "CODE_8_ELIGIBILITY",
   "CODE_9_WRONG_FORM",
+  "CODE_10_UNLISTED_REASON",
 ]);
 
 const yesNoUnsure = z.enum(["yes", "no", "unsure"]);
@@ -85,6 +86,11 @@ export function validatePostRejectionCrossFields(data: PostRejectionRequest): st
   if (codes.includes("CODE_7_NO_REASON") && !data.self_check_answers) {
     errors.push("self_check_answers is required when CODE_7_NO_REASON is selected");
   }
+  // Ticket 10: Code 10 shares Code 7's self-check mechanics exactly (see diagnose.ts), so it
+  // needs the same required-field check.
+  if (codes.includes("CODE_10_UNLISTED_REASON") && !data.self_check_answers) {
+    errors.push("self_check_answers is required when CODE_10_UNLISTED_REASON is selected");
+  }
   // Ticket 16: a genuine eligibility rejection isn't "also" a records mismatch — Code 8
   // joins Codes 6/7 in the mutual-exclusivity set below.
   if (codes.includes("CODE_8_ELIGIBILITY") && !data.eligibility_issue_type) {
@@ -95,12 +101,13 @@ export function validatePostRejectionCrossFields(data: PostRejectionRequest): st
   if (codes.includes("CODE_9_WRONG_FORM") && !data.withdrawal_intent) {
     errors.push("withdrawal_intent is required when CODE_9_WRONG_FORM is selected");
   }
-  // Codes 6, 7, 8, and 9 are mutually exclusive with every other code, INCLUDING each other
-  // (spec Section 4) — a claim cannot be simultaneously "rejected with reason X" and
-  // "approved but not credited," "no reason given," "ineligible," or "wrong form filed." (A
-  // length-based comparison against just the exclusive subset misses the case where two of
-  // these are selected together with nothing else — both then count toward "exclusive," so
-  // the two lengths come out equal instead of flagging a conflict.)
+  // Codes 6, 7, 8, 9, and 10 are mutually exclusive with every other code, INCLUDING each
+  // other (spec Section 4) — a claim cannot be simultaneously "rejected with reason X" and
+  // "approved but not credited," "no reason given," "ineligible," "wrong form filed," or "a
+  // reason given but not recognized." (A length-based comparison against just the exclusive
+  // subset misses the case where two of these are selected together with nothing else — both
+  // then count toward "exclusive," so the two lengths come out equal instead of flagging a
+  // conflict.)
   const hasExclusiveCode = codes.some((c) => MUTUALLY_EXCLUSIVE_CODES.includes(c));
   if (hasExclusiveCode && codes.length > 1) {
     // Derived from MUTUALLY_EXCLUSIVE_CODES rather than hand-typed, so this message can't
