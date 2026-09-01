@@ -1,6 +1,6 @@
 # 18 — Turn Code 8 selections into a recurring new-code review signal
 
-**Status:** Open
+**Status:** Partially done (2026-09-01) — blocked on the product owner's Mixpanel access for the one remaining step (see Closeout)
 
 Traces to: ticket 10 (Code 8, "I see a reason, but it's not listed here"). Depends on ticket 10 shipping first.
 
@@ -22,3 +22,11 @@ Confirmed this session: EPFO publishes no public master list of its own rejectio
 
 - Saved Mixpanel view exists and its URL is recorded in `analytics.md`, next to the existing `feedback_submitted` view.
 - The threshold and the "what happens when it's crossed" process are written down in `analytics.md`, so this doesn't rely on someone remembering to check.
+
+## Closeout
+
+Built as `CODE_10_UNLISTED_REASON` (ticket 10's actual name, not the speculative `CODE_8_UNLISTED_REASON` this ticket's text used before ticket 10 shipped).
+
+**Scope item 2 (documented threshold) and item 3 (no free-text capture) are done** — see the new "Watching for a new/unmatched rejection code" section in `Engineering/analytics.md`: the 10%-of-`codes_selected` threshold, and the "open a new ticket, run a broader research pass" process, both written down. Item 3 needed no new work — ticket 10 already made that call.
+
+**Scope item 1 (the Mixpanel saved view) is not done** — this is the one piece of this ticket that genuinely can't be built from here: it needs the product owner's own Mixpanel account, same as `feedback_submitted`'s already-existing saved view (and the same handoff shape as `Engineering/tickets/08-infra-deploy-setup.md`'s Vercel/Supabase provisioning). `analytics.md` documents the exact filter to set (Events → `codes_selected` where `codes` contains `CODE_10_UNLISTED_REASON`, columns `Time`/`codes`) with a placeholder noting the URL goes there once created — mirroring the `feedback_submitted` row's own format exactly, so filling it in later is a one-line edit, not a rebuild.
