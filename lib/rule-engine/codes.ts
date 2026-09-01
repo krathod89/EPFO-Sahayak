@@ -54,6 +54,12 @@ export const CODE_DEFINITIONS: Record<RuleCode, CodeDefinition> = {
     trigger:
       "EPFO shows no remark at all, or the citizen cannot find one; citizen selects this option instead of a code.",
   },
+  CODE_8_ELIGIBILITY: {
+    code: "CODE_8_ELIGIBILITY",
+    name: "Not eligible yet, or eligible for pension instead",
+    trigger:
+      "Matches EPFO remarks about a service-length eligibility rule not being met — under 6 months of service for Form 10C, or more than 9.5 years of service (which routes to a monthly pension claim instead of a lump-sum withdrawal).",
+  },
 };
 
 export interface ExplanationAndFix {
@@ -85,6 +91,10 @@ export const SUGGESTED_CATEGORY_BY_CODE: Record<RuleCode, SuggestedCategory> = {
   CODE_5_OLD_CLAIM: "PF Withdrawal",
   CODE_6_APPROVED_NOT_CREDITED: "PF Withdrawal",
   CODE_7_NO_REASON: "PF Withdrawal",
+  // Never actually surfaced to a citizen — Code 8 (ticket 16) never generates a grievance in
+  // any of its 3 branches, so this entry exists only to satisfy the exhaustive Record above.
+  // "PF Withdrawal" is the least-wrong placeholder if that ever changes.
+  CODE_8_ELIGIBILITY: "PF Withdrawal",
 };
 
 /** Caveat shown alongside `suggestedCategory` — must always accompany it; the hint is never
@@ -176,6 +186,30 @@ export const CODE_3_BRANCHES = {
     explanation:
       "EPFO requires the payout account to be in your name only. A joint account — one with more than one holder — is not accepted, even if your name is one of the holders. This is separate from KYC verification timing; it is a hard rejection, not something that clears with more waiting.",
     fix: "Open an individual bank account in your own name only. Then submit a new bank-seeding/KYC request on the UAN portal with that account. You do not need to wait or raise a grievance — the fix is opening the right kind of account.",
+  },
+} satisfies Record<string, ExplanationAndFix>;
+
+/** Code 8's three branches (ticket 16, ~2026-09-01). Deliberately NOT framed as "not your
+ * fault" the way Codes 1-7 are — those are all records-mismatch cases; this one is usually a
+ * genuine, correct eligibility rule (PRD §4's core thesis doesn't apply here, and the ticket's
+ * own framing note says so explicitly). The two known thresholds have opposite remedies (wait,
+ * vs. switch claim type entirely), so `unsure` gets its own honest branch rather than
+ * defaulting to either — guessing wrong here would send the citizen down the wrong fix. */
+export const CODE_8_BRANCHES = {
+  under_six_months: {
+    explanation:
+      "Form 10C (withdrawing your EPS pension balance) requires at least 6 months of eligible service. EPFO's records show you have not reached this yet. This is not a records mismatch — it is a genuine eligibility rule, and as things stand today, EPFO's rejection is correct.",
+    fix: "Wait until you reach 6 months of eligible service, then refile Form 10C. If you believe your recorded service length itself is wrong — for example, a missing contribution month — check your service history on the UAN portal first.",
+  },
+  over_nine_half_years: {
+    explanation:
+      "Once your service crosses 9.5 years, EPFO no longer allows a lump-sum Form 10C withdrawal of your pension balance. Past this point, you are eligible for a monthly pension instead of a one-time payout. This is a genuine eligibility rule, not a records mismatch.",
+    fix: "File Form 10D to claim your monthly pension benefit instead of Form 10C. Refiling Form 10C will keep getting rejected past this service length, regardless of anything else on your claim.",
+  },
+  unsure: {
+    explanation:
+      "EPFO's remark points to a service-length eligibility rule, but which one applies changes the fix — under 6 months of service, or over 9.5 years. We can't tell which from what's been entered here.",
+    fix: "Check your exact service length on the UAN portal's service history page. If it's under 6 months, wait and refile Form 10C once eligible. If it's over 9.5 years, file Form 10D for a monthly pension instead — Form 10C will keep being rejected past that point either way.",
   },
 } satisfies Record<string, ExplanationAndFix>;
 

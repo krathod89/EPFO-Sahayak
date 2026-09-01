@@ -120,4 +120,49 @@ describe("validatePostRejectionCrossFields", () => {
     });
     expect(errors).toHaveLength(0);
   });
+
+  // Ticket 16 (eligibility/service-period code): Code 8 is mutually exclusive with every
+  // other code, same as Codes 6/7 — a genuine eligibility rejection isn't also "also" a
+  // records mismatch. eligibility_issue_type is required whenever Code 8 is selected.
+  it("requires eligibility_issue_type when CODE_8 is selected", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY"],
+    });
+    expect(errors.some((e) => e.includes("eligibility_issue_type"))).toBe(true);
+  });
+
+  it("passes when CODE_8 is selected alone with eligibility_issue_type present", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY"],
+      eligibility_issue_type: "under_six_months",
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("rejects Code 8 combined with another code", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY", "CODE_2_DOE"],
+      eligibility_issue_type: "under_six_months",
+    });
+    expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
+  });
+
+  it("rejects Code 8 combined with Code 6 or Code 7", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY", "CODE_7_NO_REASON"],
+      eligibility_issue_type: "under_six_months",
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "yes",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(errors.some((e) => e.includes("cannot be combined"))).toBe(true);
+  });
 });

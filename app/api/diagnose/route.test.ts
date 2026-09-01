@@ -86,6 +86,33 @@ describe("POST /api/diagnose — post_rejection", () => {
     expect(res.status).toBe(400);
   });
 
+  // Ticket 16's own code-review pass flagged that nothing at this HTTP-boundary layer
+  // confirmed the deadline check is actually withheld for Code 8 — index.test.ts covers the
+  // orchestrator directly, but a future revert of route.ts's `if (result.deadline)` guard
+  // back to unconditional field access would compile and pass every other test, then only
+  // break in production. This closes that gap at the layer it was found missing from.
+  it("suppresses deadline_check_shown and result.deadline for an eligibility (Code 8) rejection", async () => {
+    const res = await POST(
+      jsonRequest({
+        entry_point: "post_rejection",
+        rejection_codes_selected: ["CODE_8_ELIGIBILITY"],
+        eligibility_issue_type: "under_six_months",
+        filing_date: "2026-08-01",
+        kyc_complete_at_filing: true,
+        today_date: "2026-08-10",
+        session_id: "sess-3",
+      })
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deadline).toBeUndefined();
+    expect(body.grievance.ready).toBe(false);
+
+    const eventTypes = trackMock.mock.calls.map((call) => call[1]);
+    expect(eventTypes).toContain("diagnosis_shown");
+    expect(eventTypes).not.toContain("deadline_check_shown");
+  });
+
   it("rejects a request combining Code 6 with another code", async () => {
     const res = await POST(
       jsonRequest({

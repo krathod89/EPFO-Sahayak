@@ -39,7 +39,10 @@ export interface PostRejectionFlowResult {
   diagnosis: DiagnoseResult;
   /** Present only when 2+ diagnosable codes were selected (spec Section 4). */
   priority?: PriorityResult;
-  deadline: DeadlineResult;
+  /** Absent for Code 8 (ticket 16) — an ineligible claim was never going to be settled
+   * regardless of the 3/20-day clock, so showing a deadline/penalty check would be actively
+   * misleading, not just unused. Present for every other code. */
+  deadline?: DeadlineResult;
   /** Present when the situation warrants an auto-generated grievance. Absent when, e.g.,
    * Code 7's self-check found an issue to fix first (spec Section 3, Code 7). */
   grievance?: GrievanceOutput;
@@ -89,10 +92,16 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
     namedob_kyc_page_status: input.namedob_kyc_page_status,
     bank_account_type: input.bank_account_type,
     bank_kyc_submission_date: input.bank_kyc_submission_date,
+    eligibility_issue_type: input.eligibility_issue_type,
     self_check_answers: input.self_check_answers,
   });
 
-  const deadline = checkDeadline(input.filing_date, input.kyc_complete_at_filing, today);
+  // Ticket 16: an ineligible claim (Code 8) was never going to be settled regardless of the
+  // 3/20-day clock — showing "EPFO missed its deadline, you're owed a penalty" here would be
+  // actively misleading, not just unused, so the check is skipped entirely rather than
+  // computed-but-hidden.
+  const isEligibilityRejection = input.rejection_codes_selected.includes("CODE_8_ELIGIBILITY");
+  const deadline = isEligibilityRejection ? undefined : checkDeadline(input.filing_date, input.kyc_complete_at_filing, today);
 
   const diagnosableSelected = input.rejection_codes_selected.filter(isDiagnosableCode);
   const priority = diagnosableSelected.length > 1 ? prioritize(diagnosableSelected) : undefined;
@@ -110,6 +119,17 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
       today_date: today,
       deadline,
       kind: { type: "approved_not_credited" },
+    });
+  } else if (isEligibilityRejection) {
+    // Always not_applicable (grievance.ts) — a genuine eligibility rule can't be overridden
+    // by filing a grievance, regardless of which of Code 8's three branches applies.
+    grievance = buildGrievance({
+      uan,
+      claim_id: claimId,
+      filing_date: input.filing_date,
+      today_date: today,
+      deadline,
+      kind: { type: "eligibility" },
     });
   } else if (input.rejection_codes_selected.includes("CODE_7_NO_REASON")) {
     if (diagnosis.selfCheck?.allClean) {

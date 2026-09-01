@@ -24,6 +24,7 @@ import type {
   SelfCheckAnswers,
   NameDobKycPageStatus,
   BankAccountType,
+  EligibilityIssueType,
   DiagnosisEntry,
   DeadlineResult,
   GrievanceOutput,
@@ -31,7 +32,7 @@ import type {
   PostRejectionFlowResult,
   ReadinessResult,
 } from "@/lib/rule-engine";
-import { SUGGESTED_CATEGORY_CAVEAT, hasBranch } from "@/lib/rule-engine";
+import { SUGGESTED_CATEGORY_CAVEAT, hasBranch, MUTUALLY_EXCLUSIVE_CODES } from "@/lib/rule-engine";
 import { dateInputError } from "@/lib/ui/date-validation";
 import { getOrCreateSessionId } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
@@ -46,6 +47,7 @@ type Screen =
   | "code1Question"
   | "code3AccountTypeQuestion"
   | "code3Question"
+  | "code8Question"
   | "selfCheck"
   | "filingDate"
   | "kycAtFiling"
@@ -71,6 +73,7 @@ interface WizardState {
   namedobKycPageStatus: NameDobKycPageStatus | null;
   bankAccountType: BankAccountType | null;
   bankKycSubmissionDate: string | null;
+  eligibilityIssueType: EligibilityIssueType | null;
   selfCheckAnswers: SelfCheckAnswersState;
   filingDate: string | null;
   kycCompleteAtFiling: boolean | null;
@@ -94,6 +97,7 @@ const init: WizardState = {
   namedobKycPageStatus: null,
   bankAccountType: null,
   bankKycSubmissionDate: null,
+  eligibilityIssueType: null,
   selfCheckAnswers: { ...emptySelfCheck },
   filingDate: null,
   kycCompleteAtFiling: null,
@@ -117,6 +121,7 @@ const RULE_CODE_SELECTION_TEXT: Record<RuleCode, string> = {
   CODE_5_OLD_CLAIM: "An earlier claim (Form 19 / 10C / 31) is still open in EPFO's system",
   CODE_6_APPROVED_NOT_CREDITED: "Claim was approved but the money never arrived in my account",
   CODE_7_NO_REASON: "I don't see a reason — EPFO didn't explain",
+  CODE_8_ELIGIBILITY: "Rejected for not meeting a service-length rule (under 6 months, or over 9.5 years)",
 };
 
 interface SelfCheckUiItem {
@@ -189,6 +194,7 @@ const VALID_SCREENS = new Set<Screen>([
   "code1Question",
   "code3AccountTypeQuestion",
   "code3Question",
+  "code8Question",
   "selfCheck",
   "filingDate",
   "kycAtFiling",
@@ -248,6 +254,7 @@ function nextScreen(current: Screen, s: WizardState): Screen {
       return s.path === "A" ? "selectCodes" : "selfCheck";
     case "selectCodes":
       if (s.selectedCodes.includes("CODE_7_NO_REASON")) return "selfCheck";
+      if (s.selectedCodes.includes("CODE_8_ELIGIBILITY")) return "code8Question";
       if (s.selectedCodes.includes("CODE_1_NAME_DOB")) return "code1Question";
       if (s.selectedCodes.includes("CODE_3_BANK_KYC")) return "code3AccountTypeQuestion";
       return "filingDate";
@@ -259,6 +266,11 @@ function nextScreen(current: Screen, s: WizardState): Screen {
     case "code3AccountTypeQuestion":
       return s.bankAccountType === "joint" ? "filingDate" : "code3Question";
     case "code3Question":
+      return "filingDate";
+    // Ticket 16: still collects filing date / KYC-complete after Code 8, even though the
+    // deadline check gets suppressed downstream for this code — keeps the rest of the flow
+    // unchanged rather than branching the wizard's shared steps around one code.
+    case "code8Question":
       return "filingDate";
     case "selfCheck":
       return s.path === "B" ? "readinessResult" : "filingDate";
@@ -556,6 +568,9 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
   const tierLabel = TIER_LABELS[entry.code];
   const isPortalSyncBug = hasBranch(entry, "portal_sync_bug");
   const isJointAccount = hasBranch(entry, "joint_account");
+  // All 3 of Code 8's branches share this distinction (ticket 16) — badged by code, not by
+  // branch, since the "eligibility rule, not a records mismatch" framing applies to all of them.
+  const isEligibility = entry.code === "CODE_8_ELIGIBILITY";
   const band = entry.meta && "band" in entry.meta ? entry.meta.band : undefined;
 
   const tierColors: Record<string, string> = { tier1: "border-l-amber-400", tier2: "border-l-blue-400", unranked: "border-l-warm-300" };
@@ -594,6 +609,11 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
           )}
           {isJointAccount && (
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">Joint account</span>
+          )}
+          {isEligibility && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+              Eligibility, not a mismatch
+            </span>
           )}
         </div>
         <h3 className="font-display font-semibold text-base text-warm-900 mt-1.5">{label}</h3>
@@ -873,6 +893,7 @@ export default function Wizard() {
       // No submission date needed for a joint account — a hard rejection independent of timing.
       bank_kyc_submission_date:
         s.selectedCodes.includes("CODE_3_BANK_KYC") && s.bankAccountType !== "joint" ? s.bankKycSubmissionDate ?? undefined : undefined,
+      eligibility_issue_type: s.selectedCodes.includes("CODE_8_ELIGIBILITY") ? s.eligibilityIssueType ?? undefined : undefined,
       self_check_answers:
         s.selectedCodes.includes("CODE_7_NO_REASON") && isSelfCheckComplete(s.selfCheckAnswers)
           ? (s.selfCheckAnswers as SelfCheckAnswers)
@@ -892,7 +913,7 @@ export default function Wizard() {
     if (s.screen !== "diagnosisSummary" && s.screen !== "grievanceOutput") return;
     if (!s.filingDate || s.kycCompleteAtFiling === null) return;
 
-    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.selfCheckAnswers]);
+    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.eligibilityIssueType, s.selfCheckAnswers]);
     if (key === lastPostRejectionKeyRef.current) return; // nothing this fetch depends on actually changed
 
     const myRequestId = ++postRejectionRequestIdRef.current;
@@ -1115,32 +1136,32 @@ export default function Wizard() {
   // ── Select codes (Path A) ─────────────────────────────────────────────
 
   if (s.screen === "selectCodes") {
-    const hasCode6or7 = s.selectedCodes.includes("CODE_6_APPROVED_NOT_CREDITED") || s.selectedCodes.includes("CODE_7_NO_REASON");
-    const hasOtherThan67 = s.selectedCodes.some((c) => c !== "CODE_6_APPROVED_NOT_CREDITED" && c !== "CODE_7_NO_REASON");
+    const hasExclusive = s.selectedCodes.some((c) => MUTUALLY_EXCLUSIVE_CODES.includes(c));
+    const hasOtherThanExclusive = s.selectedCodes.some((c) => !MUTUALLY_EXCLUSIVE_CODES.includes(c));
 
     function toggleCode(id: RuleCode) {
-      const isExclusive = id === "CODE_6_APPROVED_NOT_CREDITED" || id === "CODE_7_NO_REASON";
+      const isExclusive = MUTUALLY_EXCLUSIVE_CODES.includes(id);
       setS((prev) => {
         const has = prev.selectedCodes.includes(id);
         if (has) return { ...prev, selectedCodes: prev.selectedCodes.filter((c) => c !== id) };
         if (isExclusive) return { ...prev, selectedCodes: [id] };
         return {
           ...prev,
-          selectedCodes: [...prev.selectedCodes.filter((c) => c !== "CODE_6_APPROVED_NOT_CREDITED" && c !== "CODE_7_NO_REASON"), id],
+          selectedCodes: [...prev.selectedCodes.filter((c) => !MUTUALLY_EXCLUSIVE_CODES.includes(c)), id],
         };
       });
     }
 
     const commonIds: RuleCode[] = ["CODE_1_NAME_DOB", "CODE_2_DOE", "CODE_3_BANK_KYC", "CODE_4_EPS", "CODE_5_OLD_CLAIM"];
-    const otherIds: RuleCode[] = ["CODE_7_NO_REASON", "CODE_6_APPROVED_NOT_CREDITED"];
+    const otherIds: RuleCode[] = ["CODE_7_NO_REASON", "CODE_6_APPROVED_NOT_CREDITED", "CODE_8_ELIGIBILITY"];
 
     function renderCard(id: RuleCode) {
       const checked = s.selectedCodes.includes(id);
-      const isExclusive = id === "CODE_6_APPROVED_NOT_CREDITED" || id === "CODE_7_NO_REASON";
-      const disabled = (!checked && isExclusive && hasOtherThan67) || (!checked && !isExclusive && hasCode6or7);
-      const disabledReason = !checked && isExclusive && hasOtherThan67
+      const isExclusive = MUTUALLY_EXCLUSIVE_CODES.includes(id);
+      const disabled = (!checked && isExclusive && hasOtherThanExclusive) || (!checked && !isExclusive && hasExclusive);
+      const disabledReason = !checked && isExclusive && hasOtherThanExclusive
         ? "Not available — deselect your other reason(s) first, since this one can't be combined."
-        : !checked && !isExclusive && hasCode6or7
+        : !checked && !isExclusive && hasExclusive
           ? "Not available — the reason you picked must be used on its own."
           : undefined;
 
@@ -1176,7 +1197,7 @@ export default function Wizard() {
               under 4 visible options instead of 7. Forced open if a reason from this group
               is already selected (e.g. via Back), so state never silently hides what's
               actually chosen. */}
-          {otherReasonsOpen || hasCode6or7 ? (
+          {otherReasonsOpen || hasExclusive ? (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Other situations</p>
               <div className="space-y-2" role="group" aria-label="Other situations">
@@ -1194,7 +1215,7 @@ export default function Wizard() {
 
           {s.selectedCodes.length > 0 && (
             <p className="text-xs text-warm-600">
-              {hasCode6or7 ? "This reason cannot be combined with others." : `${s.selectedCodes.length} reason${s.selectedCodes.length > 1 ? "s" : ""} selected.`}
+              {hasExclusive ? "This reason cannot be combined with others." : `${s.selectedCodes.length} reason${s.selectedCodes.length > 1 ? "s" : ""} selected.`}
             </p>
           )}
 
@@ -1339,6 +1360,50 @@ export default function Wizard() {
     );
   }
 
+  // ── Code 8 eligibility question (ticket 16) ────────────────────────────
+  // "Unsure" deliberately gets its own honest branch downstream, rather than defaulting to
+  // either threshold — the two known eligibility rules have opposite remedies (wait, vs.
+  // switch claim type entirely), so guessing wrong here would send the citizen down the
+  // wrong fix.
+
+  if (s.screen === "code8Question") {
+    content = (
+      <Shell step={2} totalSteps={5} onBack={back} label="Eligibility">
+        <div className="space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-accent-500 mb-2">Not eligible yet, or eligible for pension instead</p>
+            <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">What does EPFO&apos;s remark say about your service length?</h2>
+            <p className="text-warm-600 text-sm mt-2 leading-relaxed">
+              This determines the fix — the two rules below have different remedies. Check your service history on the UAN portal
+              if you&apos;re not sure.
+            </p>
+          </div>
+
+          <div className="space-y-2" role="radiogroup" aria-label="What does EPFO's remark say about your service length?">
+            {(["under_six_months", "over_nine_half_years", "unsure"] as const).map((v) => (
+              <RadioCard
+                key={v}
+                label={
+                  v === "under_six_months"
+                    ? "Under 6 months of service (Form 10C eligibility)"
+                    : v === "over_nine_half_years"
+                      ? "Over 9.5 years of service (pension instead of lump sum)"
+                      : "I'm not sure which one applies"
+                }
+                checked={s.eligibilityIssueType === v}
+                onChange={() => setS({ ...s, eligibilityIssueType: v })}
+              />
+            ))}
+          </div>
+
+          <PrimaryBtn full disabled={!s.eligibilityIssueType} onClick={advance}>
+            Continue <ArrowRight className="size-4" />
+          </PrimaryBtn>
+        </div>
+      </Shell>
+    );
+  }
+
   // ── Self-check (Path B and Code 7) ────────────────────────────────────
 
   if (s.screen === "selfCheck") {
@@ -1395,13 +1460,19 @@ export default function Wizard() {
 
   if (s.screen === "filingDate") {
     const filingDateError = dateInputError(s.filingDate);
+    // Ticket 16: the deadline/penalty check is deliberately suppressed for Code 8 (an
+    // ineligible claim was never going to be settled regardless of the clock) — the copy
+    // below must not promise a check that will silently never appear on diagnosisSummary.
+    const isEligibility = s.selectedCodes.includes("CODE_8_ELIGIBILITY");
     content = (
       <Shell step={3} totalSteps={5} onBack={back} label="Filing date">
         <div className="space-y-5">
           <div>
             <h2 className="font-display font-bold text-2xl text-warm-900 leading-tight">When did you file this claim?</h2>
             <p className="text-warm-600 text-sm mt-2 leading-relaxed">
-              We'll check whether EPFO has already missed its own settlement deadline, and whether you may be owed a 12% penalty.
+              {isEligibility
+                ? "EPFO's settlement deadline and penalty rule don't apply to an eligibility rejection — we still ask for your filing date to keep your case details complete."
+                : "We'll check whether EPFO has already missed its own settlement deadline, and whether you may be owed a 12% penalty."}
             </p>
           </div>
 
@@ -1429,13 +1500,15 @@ export default function Wizard() {
             )}
           </div>
 
-          <div className="rounded-xl bg-warm-100 border border-warm-200 px-3.5 py-3 flex gap-2.5 text-xs text-warm-600 leading-relaxed">
-            <Info className="size-4 shrink-0 mt-0.5 text-warm-400" />
-            <span>
-              EPFO must settle your claim within 3 days (if KYC was complete when you filed) or 20 days (otherwise). Missing this
-              deadline entitles you to 12% penalty interest.
-            </span>
-          </div>
+          {!isEligibility && (
+            <div className="rounded-xl bg-warm-100 border border-warm-200 px-3.5 py-3 flex gap-2.5 text-xs text-warm-600 leading-relaxed">
+              <Info className="size-4 shrink-0 mt-0.5 text-warm-400" />
+              <span>
+                EPFO must settle your claim within 3 days (if KYC was complete when you filed) or 20 days (otherwise). Missing this
+                deadline entitles you to 12% penalty interest.
+              </span>
+            </div>
+          )}
 
           <PrimaryBtn full disabled={!s.filingDate || !!filingDateError} onClick={advance}>
             Continue <ArrowRight className="size-4" />
@@ -1448,6 +1521,10 @@ export default function Wizard() {
   // ── KYC at filing ───────────────────────────────────────────────────────
 
   if (s.screen === "kycAtFiling") {
+    // Ticket 16: same suppression as filingDate — these sublabels state a deadline that
+    // doesn't apply to Code 8 (deliberately suppressed, see index.ts), so they'd otherwise
+    // repeat the exact bug shape already fixed on the filingDate and diagnosisSummary screens.
+    const isEligibility = s.selectedCodes.includes("CODE_8_ELIGIBILITY");
     content = (
       <Shell step={3} totalSteps={5} onBack={back} label="Filing date">
         <div className="space-y-5">
@@ -1462,13 +1539,13 @@ export default function Wizard() {
           <div className="space-y-2" role="radiogroup" aria-label="Was your KYC complete when you filed?">
             <RadioCard
               label="Yes — all KYC was complete and verified"
-              sublabel="EPFO's 3-day deadline applies"
+              sublabel={isEligibility ? undefined : "EPFO's 3-day deadline applies"}
               checked={s.kycCompleteAtFiling === true}
               onChange={() => setS({ ...s, kycCompleteAtFiling: true })}
             />
             <RadioCard
               label="No — KYC was not fully complete"
-              sublabel="EPFO's 20-day deadline applies"
+              sublabel={isEligibility ? undefined : "EPFO's 20-day deadline applies"}
               checked={s.kycCompleteAtFiling === false}
               onChange={() => setS({ ...s, kycCompleteAtFiling: false })}
             />
@@ -1486,6 +1563,10 @@ export default function Wizard() {
 
   if (s.screen === "diagnosisSummary") {
     const isCode7 = s.selectedCodes.includes("CODE_7_NO_REASON");
+    // Ticket 16: Code 8 is deliberately NOT framed as "not your fault" — codes.ts's own
+    // CODE_8_BRANCHES copy says the opposite ("EPFO's rejection is correct"), so the summary
+    // subtitle must not contradict it the way the shared default does for every other code.
+    const isEligibility = s.selectedCodes.includes("CODE_8_ELIGIBILITY");
     const diag = postRejectionResult?.diagnosis;
     const selfCheck = diag?.selfCheck;
     const entries = diag?.entries ?? [];
@@ -1542,7 +1623,9 @@ export default function Wizard() {
                       ? "Based on your answers, here are the most likely causes. Each one has a specific fix."
                       : showPriorityRanking
                         ? "Fixing in this order will unblock your claim fastest."
-                        : "This is not your fault. Here's the specific fix."}
+                        : isEligibility
+                          ? "This is a genuine eligibility rule, not a records mismatch. Here's the specific fix."
+                          : "This is not your fault. Here's the specific fix."}
                 </p>
               </div>
 
@@ -1585,13 +1668,14 @@ export default function Wizard() {
               </motion.div>
 
               {postRejectionResult.deadline && s.filingDate && s.kycCompleteAtFiling !== null && (
-                <DeadlineCard deadline={postRejectionResult.deadline} filingDate={s.filingDate} kycComplete={s.kycCompleteAtFiling} />
+                <>
+                  <DeadlineCard deadline={postRejectionResult.deadline} filingDate={s.filingDate} kycComplete={s.kycCompleteAtFiling} />
+                  <p className="text-xs text-warm-600 leading-relaxed">
+                    Note: The 3-day and 20-day deadlines are treated as calendar days in this tool, as commonly described. EPFO
+                    has not formally published whether they are calendar or working days.
+                  </p>
+                </>
               )}
-
-              <p className="text-xs text-warm-600 leading-relaxed">
-                Note: The 3-day and 20-day deadlines are treated as calendar days in this tool, as commonly described. EPFO has
-                not formally published whether they are calendar or working days.
-              </p>
 
               <PrimaryBtn full onClick={advance}>
                 Generate grievance text <ArrowRight className="size-4" />
