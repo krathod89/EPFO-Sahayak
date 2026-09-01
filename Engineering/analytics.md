@@ -30,6 +30,15 @@ No new build for this — it's Mixpanel's own raw Events explorer (Data → Even
 - Not a saved Board/Report (no such option found on the free plan for a raw event table) — it's a URL-encoded view state. It'll keep working as long as the URL isn't lost; re-derive it the same way (filter Events to `feedback_submitted`, set columns) if it ever is.
 - Revisit if comment volume grows past what a flat table is comfortable to scan — the small in-app admin page option (Supabase, already provisioned for v2) is the next step up, but is real new scope (a write path, a read path, an access decision) not worth building until the free Mixpanel view actually falls short.
 
+## Product Overview board (2026-09-01)
+
+A saved Mixpanel Board — `EPFO-Sahayak: Product Overview` (`https://mixpanel.com/project/4058729/view/4555102/app/boards#id=11496712`) — with two saved reports, both unlike the raw-event-table view above (Insights and Funnels reports *are* saveable to a Board on the free plan; a raw Events-explorer table, per the note above, is not):
+
+- **Core Funnel Trends** — an Insights report, one line per core event (`session_started`, `entry_point_selected`, `grievance_generated`, `feedback_submitted`), monthly granularity, uniques.
+- **Core Conversion Funnel** — a Funnels report, the same four events in sequence, showing step-by-step conversion/drop-off.
+
+General usage-health overview, not tied to one ticket — separate from the ticket-18 Code-10 tracking view below, which is still not yet created. Counts against the free plan's 5-saved-reports-per-project cap (2 of 5 used as of this entry).
+
 ## Watching for a new/unmatched rejection code (ticket 18)
 
 EPFO publishes no public master list of its own rejection remarks, so there's no document to check the rule library against once and be done. `CODE_10_UNLISTED_REASON` ("I see a reason, but it's not listed here," ticket 10) is the ongoing coverage signal instead: every citizen who selects it means the library is missing something. This section turns that signal into an actual, documented process — deliberately lightweight, not a monitoring pipeline (ticket 18's own scope note: no automated detection, no free-text capture of the citizen's actual remark, just a volume signal).
