@@ -160,6 +160,18 @@ describe("buildGrievance — joint account (no grievance generated)", () => {
   });
 });
 
+describe("buildGrievance — eligibility (no grievance generated), ticket 16", () => {
+  // A genuine eligibility rule can't be overridden by filing a grievance — same
+  // not_applicable pattern as bank_kyc_escalate bands 1-2 and joint_account.
+  it("refuses to generate a grievance for an eligibility rejection", () => {
+    const result = buildGrievance({ ...base, kind: { type: "eligibility" } });
+    expect(result.ready).toBe(false);
+    if (!result.ready && result.reason === "not_applicable") {
+      expect(result.note).toMatch(/eligibility/i);
+    }
+  });
+});
+
 describe("buildGrievance — Variant C (portal sync bug)", () => {
   it("builds the sync-bug-specific text", () => {
     const result = buildGrievance({ ...base, kind: { type: "portal_sync_bug" } });

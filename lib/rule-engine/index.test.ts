@@ -16,7 +16,7 @@ describe("runPostRejectionFlow — single code, deadline missed", () => {
     const result = runPostRejectionFlow({ ...baseInput, rejection_codes_selected: ["CODE_2_DOE"] });
     expect(result.diagnosis.entries[0]!.code).toBe("CODE_2_DOE");
     expect(result.priority).toBeUndefined(); // single code, no ranking needed
-    expect(result.deadline.status).toBe("MISSED");
+    expect(result.deadline?.status).toBe("MISSED");
     expect(result.grievance?.ready).toBe(true);
     if (result.grievance?.ready) {
       expect(result.grievance.variant).toBe("A");
@@ -144,6 +144,44 @@ describe("runPostRejectionFlow — Code 3, joint-account branch (ticket 15)", ()
     if (result.grievance && !result.grievance.ready && result.grievance.reason === "not_applicable") {
       expect(result.grievance.note).toMatch(/individual/i);
     }
+  });
+});
+
+describe("runPostRejectionFlow — Code 8, eligibility branch (ticket 16)", () => {
+  // Written BEFORE index.ts's Code 8 wiring, deliberately — ticket 15's second review pass
+  // found the orchestrator's diagnose() call silently dropped a new field despite every
+  // lower-level unit test passing. Exercising the real entry point here, first, means this
+  // class of gap fails immediately during this ticket's own TDD cycle instead of needing a
+  // dedicated review pass to catch it again.
+  it("resolves the eligibility branch end to end, and generates no grievance", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY"],
+      eligibility_issue_type: "over_nine_half_years",
+    });
+    expect(result.diagnosis.entries[0]!.meta).toMatchObject({ branch: "over_nine_half_years" });
+    expect(result.diagnosis.entries[0]!.fix).toMatch(/Form 10D/);
+    expect(result.grievance?.ready).toBe(false);
+    if (result.grievance && !result.grievance.ready && result.grievance.reason === "not_applicable") {
+      expect(result.grievance.note).toMatch(/eligibility/i);
+    }
+  });
+
+  // Ticket 16's own scope: an ineligible claim was never going to be settled regardless of
+  // the 3/20-day clock, so showing "EPFO missed its deadline, you're owed a penalty" would be
+  // actively misleading here — deliberately suppressed, not just left unused.
+  it("suppresses the deadline check entirely for an eligibility rejection", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput, // today_date is well past any 3/20-day deadline from filing_date
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY"],
+      eligibility_issue_type: "under_six_months",
+    });
+    expect(result.deadline).toBeUndefined();
+  });
+
+  it("still computes the deadline normally for every other code", () => {
+    const result = runPostRejectionFlow({ ...baseInput, rejection_codes_selected: ["CODE_2_DOE"] });
+    expect(result.deadline).toBeDefined();
   });
 });
 

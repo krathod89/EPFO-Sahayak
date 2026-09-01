@@ -8,12 +8,14 @@ import {
   CODE_3_BRANCHES,
   CODE_3_GENERAL,
   CODE_3_INTRO,
+  CODE_8_BRANCHES,
   SIMPLE_CODE_COPY,
 } from "./codes";
 import { bucketSelfCheck } from "./selfCheck";
 import { bankKycWaitBand, workingDaysBetween } from "./waitBands";
 import type {
   BankAccountType,
+  EligibilityIssueType,
   ISODate,
   NameDobKycPageStatus,
   RuleCode,
@@ -21,10 +23,16 @@ import type {
 } from "./types";
 
 /** Every named branch across every code that has one (Code 1's two, Code 3's joint-account
- * branch). One shared union rather than redeclared per meta-shape, so `hasBranch()` below
- * stays a single, reusable type guard instead of the 4x-duplicated inline check it replaced
- * (ticket 15, code-review pass). */
-export type EntryBranch = "standard_mismatch" | "portal_sync_bug" | "joint_account";
+ * branch, Code 8's three). One shared union rather than redeclared per meta-shape, so
+ * `hasBranch()` below stays a single, reusable type guard instead of the 4x-duplicated inline
+ * check it replaced (ticket 15, code-review pass). */
+export type EntryBranch =
+  | "standard_mismatch"
+  | "portal_sync_bug"
+  | "joint_account"
+  | "under_six_months"
+  | "over_nine_half_years"
+  | "unsure";
 
 export interface DiagnosisEntry {
   code: RuleCode;
@@ -57,6 +65,7 @@ export interface DiagnoseParams {
   namedob_kyc_page_status?: NameDobKycPageStatus;
   bank_account_type?: BankAccountType;
   bank_kyc_submission_date?: ISODate;
+  eligibility_issue_type?: EligibilityIssueType;
   self_check_answers?: SelfCheckAnswers;
 }
 
@@ -90,6 +99,13 @@ function resolveCode3(submissionDate: ISODate, todayDate: ISODate): DiagnosisEnt
   };
 }
 
+/** Code 8's three branches (ticket 16) — see codes.ts's CODE_8_BRANCHES for why `unsure` gets
+ * its own honest branch rather than defaulting to either specific threshold. */
+function resolveCode8(issueType: EligibilityIssueType): DiagnosisEntry {
+  const branchCopy = CODE_8_BRANCHES[issueType];
+  return { code: "CODE_8_ELIGIBILITY", ...branchCopy, meta: { branch: issueType } };
+}
+
 function resolveSimpleCode(code: RuleCode): DiagnosisEntry {
   const copy = SIMPLE_CODE_COPY[code];
   if (!copy) throw new Error(`Unsupported code in diagnose(): ${code}`);
@@ -111,7 +127,15 @@ export function resolveSelfCheckIssueCode(code: RuleCode): DiagnosisEntry {
 }
 
 export function diagnose(params: DiagnoseParams): DiagnoseResult {
-  const { codes, today_date, namedob_kyc_page_status, bank_account_type, bank_kyc_submission_date, self_check_answers } = params;
+  const {
+    codes,
+    today_date,
+    namedob_kyc_page_status,
+    bank_account_type,
+    bank_kyc_submission_date,
+    eligibility_issue_type,
+    self_check_answers,
+  } = params;
 
   if (codes.includes("CODE_7_NO_REASON")) {
     if (!self_check_answers) {
@@ -142,6 +166,12 @@ export function diagnose(params: DiagnoseParams): DiagnoseResult {
         throw new Error("bank_kyc_submission_date is required when CODE_3_BANK_KYC is selected and the account is not joint");
       }
       return resolveCode3(bank_kyc_submission_date, today_date);
+    }
+    if (code === "CODE_8_ELIGIBILITY") {
+      if (!eligibility_issue_type) {
+        throw new Error("eligibility_issue_type is required when CODE_8_ELIGIBILITY is selected");
+      }
+      return resolveCode8(eligibility_issue_type);
     }
     return resolveSimpleCode(code);
   });

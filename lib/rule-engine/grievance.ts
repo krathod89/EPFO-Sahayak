@@ -39,7 +39,8 @@ export type VariantKind =
   | { type: "portal_sync_bug" } // Variant C — Code 1, portal-sync-bug branch
   | { type: "approved_not_credited" } // Variant D — Code 6
   | { type: "demand_reason" } // Variant E — Code 7, all self-checks clean
-  | { type: "joint_account" }; // No grievance variant — Code 3, joint-account branch (ticket 15). Always not_applicable; see buildVariantContent.
+  | { type: "joint_account" } // No grievance variant — Code 3, joint-account branch (ticket 15). Always not_applicable; see buildVariantContent.
+  | { type: "eligibility" }; // No grievance variant — Code 8 (ticket 16). Always not_applicable — a genuine eligibility rule can't be overridden by a grievance.
 
 export interface GrievanceRequest {
   uan: string;
@@ -77,6 +78,8 @@ function suggestedCategoryFor(kind: VariantKind): SuggestedCategory {
         return "CODE_6_APPROVED_NOT_CREDITED";
       case "demand_reason":
         return "CODE_7_NO_REASON";
+      case "eligibility":
+        return "CODE_8_ELIGIBILITY";
     }
   })();
   return SUGGESTED_CATEGORY_BY_CODE[code];
@@ -115,6 +118,12 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
       return {
         notApplicable:
           "No grievance is generated for a joint-account rejection — the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
+      };
+
+    case "eligibility":
+      return {
+        notApplicable:
+          "No grievance is generated for an eligibility rejection — a genuine service-length rule can't be overridden by filing a grievance. See the fix text above for the actual next step (Rule Engine Spec.md Section 6).",
       };
 
     case "portal_sync_bug":

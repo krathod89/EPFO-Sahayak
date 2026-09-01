@@ -188,3 +188,47 @@ describe("diagnose — Code 7 self-check sub-flow", () => {
     expect(() => diagnose({ codes: ["CODE_7_NO_REASON"], today_date: "2026-08-29" })).toThrow();
   });
 });
+
+describe("diagnose — Code 8 (eligibility/service-period), ticket 16", () => {
+  it("throws if Code 8 is selected without eligibility_issue_type", () => {
+    expect(() => diagnose({ codes: ["CODE_8_ELIGIBILITY"], today_date: "2026-08-29" })).toThrow();
+  });
+
+  it("resolves the under-six-months branch, without 'not your fault' framing", () => {
+    const result = diagnose({
+      codes: ["CODE_8_ELIGIBILITY"],
+      today_date: "2026-08-29",
+      eligibility_issue_type: "under_six_months",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "under_six_months" });
+    expect(result.entries[0]!.explanation).toMatch(/6 months/);
+    expect(result.entries[0]!.fix).toMatch(/wait/i);
+    // PRD §4's core thesis ("not your fault") deliberately does NOT apply here — this is
+    // usually a real, correct eligibility rule, not a records mismatch.
+    expect(result.entries[0]!.explanation).not.toMatch(/not your fault/i);
+  });
+
+  it("resolves the over-nine-half-years branch, pointing to Form 10D instead of waiting", () => {
+    const result = diagnose({
+      codes: ["CODE_8_ELIGIBILITY"],
+      today_date: "2026-08-29",
+      eligibility_issue_type: "over_nine_half_years",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "over_nine_half_years" });
+    expect(result.entries[0]!.explanation).toMatch(/9\.5 years/);
+    expect(result.entries[0]!.fix).toMatch(/Form 10D/);
+    expect(result.entries[0]!.explanation).not.toMatch(/not your fault/i);
+  });
+
+  it("resolves the unsure branch honestly, without guessing which threshold applies", () => {
+    const result = diagnose({
+      codes: ["CODE_8_ELIGIBILITY"],
+      today_date: "2026-08-29",
+      eligibility_issue_type: "unsure",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "unsure" });
+    // The unsure fix must cover both possible remedies, not silently pick one.
+    expect(result.entries[0]!.fix).toMatch(/6 months/);
+    expect(result.entries[0]!.fix).toMatch(/9\.5 years/);
+  });
+});

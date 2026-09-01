@@ -26,14 +26,15 @@ The engine has **four core functions**:
 | `uan` | string (UAN, typically 12 digits) | Optional for diagnosis only; **Required** to generate grievance text | Used to fill the grievance template. |
 | `claim_id` | string | Optional for diagnosis only; **Required** to generate grievance text | Used to fill the grievance template. |
 | `claim_type` | enum: `Form 19`, `Form 10C`, `Form 31`, `unsure` | Optional | Context only. Not used for branching — the exact claim-type eligibility conditions for the 3-day settlement rule are not yet confirmed (see Section 9, gap 2). |
-| `rejection_codes_selected` | set of enum: `code1`…`code6`, `code7` | **Required** for `post_rejection` | Multi-select. See Section 3 for code definitions. `code6` and `code7` cannot be selected alongside another code (see Section 4). |
+| `rejection_codes_selected` | set of enum: `code1`…`code7`, `code8` | **Required** for `post_rejection` | Multi-select. See Section 3 for code definitions. `code6`, `code7`, and `code8` (ticket 16) cannot be selected alongside another code, or each other (see Section 4). |
 | `filing_date` | date | **Required** for `post_rejection` (feeds H11 check) | The date the citizen filed the claim now under review. |
 | `kyc_complete_at_filing` | boolean | **Required** for `post_rejection` (feeds H11 check) | Citizen-reported: was their KYC complete when they filed? Drives the 3-day vs. 20-day branch. |
 | `today_date` | date | System-provided | Not entered by the citizen. |
 | `namedob_kyc_page_status` | enum: `approved_and_verified`, `not_verified`, `unsure` | **Required if `code1` selected** | Answers the branching sub-question in Section 3, Code 1. |
 | `bank_account_type` | enum: `individual`, `joint`, `unsure` | **Required if `code3` selected** (ticket 15, 2026-08-31) | Answers Code 3's joint-account branching sub-question (Section 3, Code 3). `joint` skips the wait-time check entirely — a joint account is a hard rejection independent of timing. |
 | `bank_kyc_submission_date` | date | **Required if `code3` selected AND `bank_account_type` is not `joint`** | Feeds the 3-band wait-time check in Section 3, Code 3. Not needed for a joint-account rejection. |
-| `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across both cases (Section 3, Code 7; Section 7). |
+| `eligibility_issue_type` | enum: `under_six_months`, `over_nine_half_years`, `unsure` | **Required if `code8` selected** (ticket 16, ~2026-09-01) | Answers Code 8's branching sub-question (Section 3, Code 8). The two named thresholds have opposite remedies, so `unsure` gets its own branch rather than defaulting to either. |
+| `self_check_answers` | structured set of 5 answers, each `yes` / `no` / `unsure` (see list below) | **Required if `code7` selected**, or **always** for `pre_filing` | Same 5-item checklist reused across both cases (Section 3, Code 7; Section 7). Not extended to cover Code 8 (ticket 16) — out of scope for that ticket. |
 
 **The 5-item self-check checklist** (used by Code 7 and by the pre-filing entry point — same fields, same logic):
 - `doe_marked` — "Is your Date of Exit marked?"
@@ -141,11 +142,33 @@ Each row: trigger, plain-language explanation copy (draft), recommended fix, and
   - *Fix:* "File a grievance through EPFiGMS that explicitly asks EPFO to state the actual reason for rejection. Do not guess a fix — demand the reason first." (Generates the special "demand the real reason" grievance variant — see Section 6.)
 - **If any check comes back `unsure`:** tell the citizen which item(s) to double-check before concluding "no reason found" (do not treat `unsure` as clean).
 
+### Code 8 — Not eligible yet, or eligible for pension instead (ticket 16, ~2026-09-01)
+
+**Trigger:** matches EPFO remarks about a service-length eligibility rule not being met — under 6 months of service for Form 10C, or more than 9.5 years of service. Confirmed via multiple convergent sources (ClearTax, Kotak Life, Kustodian) that this shows up as a specific "Track Claim Status" remark, not a pre-submission block — same mechanism as every other code.
+
+**Framing, deliberately different from Codes 1–7:** those codes are all "two records disagree, and that's not the citizen's fault" (PRD §4's core thesis). Code 8 is usually the opposite — "you're not eligible yet, and EPFO's rejection is correct." The copy below does not claim "not your fault," and does not use the grievance mechanism, since a genuine eligibility rule can't be argued away.
+
+**Branching sub-question:** `eligibility_issue_type` — which threshold does the remark point to? The two known thresholds have opposite remedies (wait, vs. switch claim type entirely), so `unsure` is a real third branch, not a default.
+
+| Branch | Explanation | Fix |
+|---|---|---|
+| `under_six_months` | "Form 10C (withdrawing your EPS pension balance) requires at least 6 months of eligible service. EPFO's records show you have not reached this yet. This is not a records mismatch — it is a genuine eligibility rule, and as things stand today, EPFO's rejection is correct." | "Wait until you reach 6 months of eligible service, then refile Form 10C. If you believe your recorded service length itself is wrong — for example, a missing contribution month — check your service history on the UAN portal first." |
+| `over_nine_half_years` | "Once your service crosses 9.5 years, EPFO no longer allows a lump-sum Form 10C withdrawal of your pension balance. Past this point, you are eligible for a monthly pension instead of a one-time payout. This is a genuine eligibility rule, not a records mismatch." | "File Form 10D to claim your monthly pension benefit instead of Form 10C. Refiling Form 10C will keep getting rejected past this service length, regardless of anything else on your claim." |
+| `unsure` | "EPFO's remark points to a service-length eligibility rule, but which one applies changes the fix — under 6 months of service, or over 9.5 years. We can't tell which from what's been entered here." | "Check your exact service length on the UAN portal's service history page. If it's under 6 months, wait and refile Form 10C once eligible. If it's over 9.5 years, file Form 10D for a monthly pension instead — Form 10C will keep being rejected past that point either way." |
+
+**Exclusivity:** mutually exclusive with every other code, including Codes 6 and 7 (Section 4) — a genuine eligibility rejection isn't "also" a records mismatch.
+
+**Deadline check:** suppressed entirely for this code (Section 5) — an ineligible claim was never going to be settled regardless of the 3/20-day clock.
+
+**Grievance:** never applicable (Section 6) — a genuine eligibility rule can't be overridden by filing a grievance.
+
+**Not extended to the self-check checklist or pre-filing flow** — out of scope for this ticket; Codes 1–5 and 7 remain the only codes reachable via Code 7's fallback or the pre-filing readiness check.
+
 ---
 
 ## 4. Priority-Check Logic (H10)
 
-Applies only when `rejection_codes_selected` contains **2 or more** of Codes 1, 2, 3, 4, 5. (Codes 6 and 7 are mutually exclusive with the other codes at the UI level — a claim cannot be simultaneously "rejected with reason X" and "approved but not credited" or "no reason given.")
+Applies only when `rejection_codes_selected` contains **2 or more** of Codes 1, 2, 3, 4, 5. (Codes 6, 7, and 8 (ticket 16) are mutually exclusive with the other codes at the UI level — a claim cannot be simultaneously "rejected with reason X" and "approved but not credited," "no reason given," or "ineligible.")
 
 **The two tiers, from PRD §7a item 2:**
 - **Tier 1 — blocks eligibility first:** Code 2 (Date of Exit not marked), Code 5 (old claim pending). These are checked earlier in EPFO's process — a claim cannot even be considered eligible for processing until these clear.
@@ -185,7 +208,7 @@ function prioritize(selected_codes: Set<Code>) -> ordered result:
 
 ## 5. Deadline / Penalty Check Logic (H11)
 
-Runs whenever `entry_point = post_rejection` and `filing_date` + `kyc_complete_at_filing` are provided. Independent of which code(s) were selected — it always runs, and its result is appended to whichever diagnosis/priority output the citizen already saw.
+Runs whenever `entry_point = post_rejection` and `filing_date` + `kyc_complete_at_filing` are provided — **except Code 8 (ticket 16), where it is skipped entirely.** An ineligible claim was never going to be settled regardless of the 3/20-day clock, so showing "EPFO missed its deadline, you're owed a penalty" would be actively misleading for this code, not just unused. For every other code it is independent of which code(s) were selected — it always runs, and its result is appended to whichever diagnosis/priority output the citizen already saw.
 
 **Caveat carried into this logic:** the source states "3 days (complete KYC)" and "20 days (otherwise)" without specifying whether these are calendar days or working days (unlike the Code 3 wait-time bands, which are explicitly "working days"). This spec treats them as **calendar days**, matching how the rule is generally described in news coverage, but this is an assumption, not a confirmed detail — flagged in Section 9, gap 6.
 
@@ -248,6 +271,8 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 *(For Bands 1 and 2, no grievance is generated — the recommended action is to wait or check with your bank directly, not to file a grievance yet.)*
 
 **Joint account (ticket 15) — also no grievance generated, for a different reason.** Unlike bands 1–2 (not stuck *yet*), a joint-account rejection is never an EPFO error to escalate — the fix is entirely on the citizen's side (open an individual account). The "not applicable" note for this case: *"No grievance is generated for a joint-account rejection — the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO."*
+
+**Code 8, eligibility (ticket 16) — no grievance generated, for any of its 3 branches.** A genuine eligibility rule can't be overridden by filing a grievance. The "not applicable" note: *"No grievance is generated for an eligibility rejection — a genuine service-length rule can't be overridden by filing a grievance. See the fix text above for the actual next step."*
 
 ### Variant C — portal sync bug (Code 1, `namedob_kyc_page_status = approved_and_verified`)
 

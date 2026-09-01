@@ -42,10 +42,14 @@ export async function POST(request: Request) {
       tier2: result.priority?.tier2 ?? [],
       unranked: result.priority?.unranked ?? [],
     });
-    trackServerEvent(sessionId, "deadline_check_shown", {
-      status: result.deadline.status,
-      deadline_days: result.deadline.deadlineDays,
-    });
+    // Absent for Code 8 (ticket 16) — an ineligible claim was never going to be settled
+    // regardless of the clock, so index.ts deliberately skips computing this at all.
+    if (result.deadline) {
+      trackServerEvent(sessionId, "deadline_check_shown", {
+        status: result.deadline.status,
+        deadline_days: result.deadline.deadlineDays,
+      });
+    }
     if (result.grievance?.ready) {
       trackServerEvent(sessionId, "grievance_generated", {
         variant: result.grievance.variant,

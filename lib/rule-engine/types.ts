@@ -3,7 +3,7 @@
 
 export type EntryPoint = "post_rejection" | "pre_filing";
 
-/** The 7 selectable rejection/failure codes (spec Section 3). */
+/** The 8 selectable rejection/failure codes (spec Section 3). */
 export type RuleCode =
   | "CODE_1_NAME_DOB"
   | "CODE_2_DOE"
@@ -11,7 +11,16 @@ export type RuleCode =
   | "CODE_4_EPS"
   | "CODE_5_OLD_CLAIM"
   | "CODE_6_APPROVED_NOT_CREDITED"
-  | "CODE_7_NO_REASON";
+  | "CODE_7_NO_REASON"
+  | "CODE_8_ELIGIBILITY";
+
+/** Codes that can't be combined with anything else, including each other (spec Section 4) —
+ * a claim can't be simultaneously "rejected with reason X" and "approved but not credited,"
+ * "no reason given," or "ineligible." Single source of truth, imported by both `schema.ts`
+ * (server-side validation) and `Wizard.tsx` (client-side selection UI) — ticket 16's own
+ * code-review pass found these hand-maintained as two separate literal arrays, one per layer,
+ * risking exactly the client/server drift a shared constant exists to prevent. */
+export const MUTUALLY_EXCLUSIVE_CODES: RuleCode[] = ["CODE_6_APPROVED_NOT_CREDITED", "CODE_7_NO_REASON", "CODE_8_ELIGIBILITY"];
 
 /** Codes that can be diagnosed and ranked together (excludes Code 6/7, which are mutually
  * exclusive with the other codes at the UI level — spec Section 4). */
@@ -42,6 +51,12 @@ export type NameDobKycPageStatus = "approved_and_verified" | "not_verified" | "u
  * defaulting to its less-severe branch. */
 export type BankAccountType = "individual" | "joint" | "unsure";
 
+/** Which eligibility rule Code 8's remark points to — the two known EPFO service-length
+ * thresholds have opposite remedies (wait vs. switch claim type entirely), so this can't
+ * safely default either way the way Code 1's `unsure` does; "unsure" gets its own honest
+ * branch instead (ticket 16, ~2026-09-01). */
+export type EligibilityIssueType = "under_six_months" | "over_nine_half_years" | "unsure";
+
 export type ClaimType = "Form 19" | "Form 10C" | "Form 31" | "unsure";
 
 /** ISO date string, e.g. "2026-08-29". */
@@ -64,6 +79,8 @@ export interface PostRejectionInput {
   /** Required if CODE_3_BANK_KYC is selected and `bank_account_type` isn't "joint" — a
    * joint-account rejection is a hard rejection independent of timing, so no date applies. */
   bank_kyc_submission_date?: ISODate;
+  /** Required if CODE_8_ELIGIBILITY is selected. */
+  eligibility_issue_type?: EligibilityIssueType;
   /** Required if CODE_7_NO_REASON is selected. */
   self_check_answers?: SelfCheckAnswers;
 }
