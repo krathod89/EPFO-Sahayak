@@ -36,6 +36,12 @@ export interface SelfCheckAnswers {
 
 export type NameDobKycPageStatus = "approved_and_verified" | "not_verified" | "unsure";
 
+/** Whether the citizen's bank payout account is solely in their own name — EPFO rejects
+ * joint accounts outright, a distinct, non-timing failure inside Code 3's territory
+ * (ticket 15). "unsure" routes to the normal wait-time-band flow, same as Code 1's "unsure"
+ * defaulting to its less-severe branch. */
+export type BankAccountType = "individual" | "joint" | "unsure";
+
 export type ClaimType = "Form 19" | "Form 10C" | "Form 31" | "unsure";
 
 /** ISO date string, e.g. "2026-08-29". */
@@ -54,6 +60,9 @@ export interface PostRejectionInput {
   /** Required if CODE_1_NAME_DOB is selected. */
   namedob_kyc_page_status?: NameDobKycPageStatus;
   /** Required if CODE_3_BANK_KYC is selected. */
+  bank_account_type?: BankAccountType;
+  /** Required if CODE_3_BANK_KYC is selected and `bank_account_type` isn't "joint" — a
+   * joint-account rejection is a hard rejection independent of timing, so no date applies. */
   bank_kyc_submission_date?: ISODate;
   /** Required if CODE_7_NO_REASON is selected. */
   self_check_answers?: SelfCheckAnswers;

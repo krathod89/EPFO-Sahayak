@@ -163,6 +163,22 @@ export const CODE_3_BANDS: Record<1 | 2 | 3, ExplanationAndFix> = {
   },
 };
 
+/** Code 3's named branches, parallel to CODE_1_BRANCHES above — a container for "one code,
+ * multiple distinct branches," rather than a standalone constant (ticket 15, 2026-08-31,
+ * code-review pass). Currently just the joint-account branch: found while auditing coverage
+ * past the original 15-case sample's own biased search terms, EPFO requires the payout
+ * account to be solely in the citizen's name — a joint account is a hard rejection, not a
+ * timing issue, so no wait-time band applies. The fix is deliberately worded so it can't be
+ * confused with the KYC-verification fix text above: this is a citizen-side account change,
+ * not something to wait on or escalate. */
+export const CODE_3_BRANCHES = {
+  joint_account: {
+    explanation:
+      "EPFO requires the payout account to be in your name only. A joint account — one with more than one holder — is not accepted, even if your name is one of the holders. This is separate from KYC verification timing; it is a hard rejection, not something that clears with more waiting.",
+    fix: "Open an individual bank account in your own name only. Then submit a new bank-seeding/KYC request on the UAN portal with that account. You do not need to wait or raise a grievance — the fix is opening the right kind of account.",
+  },
+} satisfies Record<string, ExplanationAndFix>;
+
 /** Code 7's opening text, shown before the self-check sub-flow runs (spec Section 3, Code 7). */
 export const CODE_7_OPENING =
   "EPFO has not told you why your claim was rejected. This can happen. It does not mean nothing is wrong — it means EPFO did not explain. Let's check the common causes yourself, one by one.";

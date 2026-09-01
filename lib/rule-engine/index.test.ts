@@ -123,6 +123,30 @@ describe("runPostRejectionFlow — Code 7, an issue found", () => {
   });
 });
 
+describe("runPostRejectionFlow — Code 3, joint-account branch (ticket 15)", () => {
+  // Regression coverage for a real bug the second code-review pass caught: diagnose.ts's own
+  // unit tests all set bank_account_type directly, but the orchestrator's diagnose() call
+  // itself omitted the field entirely — so a real citizen picking "joint account" through the
+  // actual app would have hit an uncaught throw ("bank_kyc_submission_date is required...")
+  // despite every lower-level unit test passing. This test exercises the real entry point
+  // (runPostRejectionFlow), not diagnose()/grievance.ts in isolation, so a future orchestrator-
+  // forwarding gap like this one fails here instead of shipping silently.
+  it("resolves the joint-account branch with no submission date, and generates no grievance", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_3_BANK_KYC"],
+      bank_account_type: "joint",
+      // Deliberately no bank_kyc_submission_date — matches what the real UI sends for this path.
+    });
+    expect(result.diagnosis.entries[0]!.meta).toMatchObject({ branch: "joint_account" });
+    expect(result.diagnosis.entries[0]!.explanation).toMatch(/joint account/i);
+    expect(result.grievance?.ready).toBe(false);
+    if (result.grievance && !result.grievance.ready && result.grievance.reason === "not_applicable") {
+      expect(result.grievance.note).toMatch(/individual/i);
+    }
+  });
+});
+
 describe("runPreFilingFlow", () => {
   it("delegates directly to the readiness check, with no priority/deadline fields", () => {
     const input: PreFilingInput = {

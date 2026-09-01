@@ -28,14 +28,18 @@ export interface StandardKind {
   issueSentence: string;
 }
 
-type VariantKind =
+// Exported (ticket 15, code-review pass) so index.ts's kindForPrimaryCode can type its
+// return value against this directly, instead of re-declaring an overlapping subset union
+// that has to be kept in sync by hand every time a variant is added here.
+export type VariantKind =
   | StandardKind
   | { type: "bank_kyc_escalate"; band: 1 | 2 | 3; bank_kyc_submission_date: ISODate } // Variant B — Code 3, band 3 only.
     // Text re-anchored 2026-08-31 (ticket 13): no longer references employer approval —
     // EPFO's April 2025 order removed that step from bank-KYC seeding. See waitBands.ts.
   | { type: "portal_sync_bug" } // Variant C — Code 1, portal-sync-bug branch
   | { type: "approved_not_credited" } // Variant D — Code 6
-  | { type: "demand_reason" }; // Variant E — Code 7, all self-checks clean
+  | { type: "demand_reason" } // Variant E — Code 7, all self-checks clean
+  | { type: "joint_account" }; // No grievance variant — Code 3, joint-account branch (ticket 15). Always not_applicable; see buildVariantContent.
 
 export interface GrievanceRequest {
   uan: string;
@@ -54,20 +58,27 @@ export type GrievanceOutput =
 
 /** Looks up each variant's broad-category guess through the single exhaustive table in
  * codes.ts (`SUGGESTED_CATEGORY_BY_CODE`), rather than a second, separately-maintained guess
- * here — Variants B/C/D/E are each fixed 1:1 to one code, so they look that code straight up;
- * Variant A (`standard`) carries its code directly. See module note above for why this is a
- * guess, not an exact mapping. */
+ * here — every non-`standard` variant is fixed 1:1 to one code, so it looks that code
+ * straight up; `standard` carries its code directly. Only called for a `ready: true` result
+ * (see `buildGrievance` below), so `joint_account` — always `not_applicable` — never actually
+ * reaches this function; its branch below exists for exhaustiveness, not live behavior. See
+ * module note above for why this is a guess, not an exact mapping. */
 function suggestedCategoryFor(kind: VariantKind): SuggestedCategory {
-  const code: RuleCode =
-    kind.type === "standard"
-      ? kind.code
-      : kind.type === "bank_kyc_escalate"
-        ? "CODE_3_BANK_KYC"
-        : kind.type === "portal_sync_bug"
-          ? "CODE_1_NAME_DOB"
-          : kind.type === "approved_not_credited"
-            ? "CODE_6_APPROVED_NOT_CREDITED"
-            : "CODE_7_NO_REASON"; // demand_reason
+  const code: RuleCode = (() => {
+    switch (kind.type) {
+      case "standard":
+        return kind.code;
+      case "bank_kyc_escalate":
+      case "joint_account":
+        return "CODE_3_BANK_KYC";
+      case "portal_sync_bug":
+        return "CODE_1_NAME_DOB";
+      case "approved_not_credited":
+        return "CODE_6_APPROVED_NOT_CREDITED";
+      case "demand_reason":
+        return "CODE_7_NO_REASON";
+    }
+  })();
   return SUGGESTED_CATEGORY_BY_CODE[code];
 }
 
@@ -98,6 +109,12 @@ function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVar
         variant: "B",
         subject: `Grievance regarding unverified bank KYC — Claim ID ${claim_id}`,
         core: `My PF claim (Claim ID: ${claim_id}, UAN: ${uan}) is blocked because my bank KYC is not verified. I submitted my bank KYC on ${kind.bank_kyc_submission_date}. This has taken longer than the typical bank/NPCI verification turnaround. I request EPFO to check the status of my bank KYC verification directly and resettle my claim.`,
+      };
+
+    case "joint_account":
+      return {
+        notApplicable:
+          "No grievance is generated for a joint-account rejection — the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO (Rule Engine Spec.md Section 6).",
       };
 
     case "portal_sync_bug":

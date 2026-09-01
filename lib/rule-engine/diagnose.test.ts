@@ -90,8 +90,45 @@ describe("diagnose — Code 3 wait-time bands", () => {
     expect(result.entries[0]!.fix).not.toMatch(/employer/i);
   });
 
-  it("throws if Code 3 is selected without a submission date", () => {
+  it("throws if Code 3 is selected without a submission date, and the account isn't joint", () => {
     expect(() => diagnose({ codes: ["CODE_3_BANK_KYC"], today_date: "2026-08-29" })).toThrow();
+    expect(() =>
+      diagnose({ codes: ["CODE_3_BANK_KYC"], today_date: "2026-08-29", bank_account_type: "individual" })
+    ).toThrow();
+    expect(() =>
+      diagnose({ codes: ["CODE_3_BANK_KYC"], today_date: "2026-08-29", bank_account_type: "unsure" })
+    ).toThrow();
+  });
+});
+
+describe("diagnose — Code 3 joint-account branch", () => {
+  // Ticket 15 (2026-08-31): a joint-account rejection is a hard rejection independent of
+  // timing — no submission date needed, no wait-time band, and no employer/bank-verification
+  // framing (that's a different failure mode entirely).
+  it("resolves the joint-account branch without requiring a submission date", () => {
+    const result = diagnose({ codes: ["CODE_3_BANK_KYC"], today_date: "2026-08-29", bank_account_type: "joint" });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "joint_account" });
+    expect(result.entries[0]!.explanation).toMatch(/joint account/i);
+    expect(result.entries[0]!.fix).toMatch(/individual/i);
+  });
+
+  it("the joint-account fix is distinct from the KYC-verification fix text", () => {
+    const result = diagnose({ codes: ["CODE_3_BANK_KYC"], today_date: "2026-08-29", bank_account_type: "joint" });
+    expect(result.entries[0]!.fix).not.toMatch(/employer/i);
+    expect(result.entries[0]!.fix).not.toMatch(/typical.*turnaround/i);
+    expect(result.entries[0]!.fix).not.toMatch(/working days/i);
+  });
+
+  it("ignores a submission date if one is somehow present alongside a joint account", () => {
+    // Belt-and-suspenders: even if the UI sent a stale date, the joint-account branch must
+    // win — a joint account is never "still within the normal wait."
+    const result = diagnose({
+      codes: ["CODE_3_BANK_KYC"],
+      today_date: "2026-08-29",
+      bank_account_type: "joint",
+      bank_kyc_submission_date: "2026-08-27",
+    });
+    expect(result.entries[0]!.meta).toMatchObject({ branch: "joint_account" });
   });
 });
 
