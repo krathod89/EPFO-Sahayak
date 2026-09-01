@@ -636,6 +636,7 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
   const isJointAccount = hasBranch(entry, "joint_account");
   const codeBadgeText = CODE_BADGE_TEXT[entry.code];
   const band = entry.meta && "band" in entry.meta ? entry.meta.band : undefined;
+  const sources = sourcesFor(entry);
 
   const tierColors: Record<string, string> = { tier1: "border-l-amber-400", tier2: "border-l-blue-400", unranked: "border-l-warm-300" };
   const tierText: Record<string, string> = {
@@ -695,6 +696,7 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">What to do</p>
             <p className="text-sm text-warm-700 leading-relaxed">{entry.fix}</p>
+            {sources && <SourceLinks tone="neutral" links={sources} />}
           </div>
         )}
       </div>
@@ -713,29 +715,89 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
  * Deliberately not citing every fact this way — only where a genuine official source is
  * actually live; see CODE_3_INTRO's own comment for a fact that still has no live official
  * document. */
-function DeadlineRuleSources({ tone }: { tone: "red" | "green" | "neutral" }) {
+interface SourceLink {
+  label: string;
+  href: string;
+}
+
+/** Shared renderer for a row of "supporting link" citations — extracted so every place that
+ * cites an official EPFO source (the deadline rule below, and each fix's `sourcesFor()` further
+ * down) renders identically instead of copy-pasting the link markup per call site. */
+function SourceLinks({ tone, links }: { tone: "red" | "green" | "neutral"; links: SourceLink[] }) {
   const linkClass =
     tone === "red" ? "text-red-700 hover:text-red-800" : tone === "green" ? "text-green-700 hover:text-green-800" : "text-warm-600 hover:text-warm-700";
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-      <a
-        href="https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=2234502&reg=3&lang=2"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={cn("inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors", linkClass)}
-      >
-        Official notification (PIB) <ExternalLink className="size-3" />
-      </a>
-      <a
-        href="https://www.epfo.gov.in/faq-epfo"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={cn("inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors", linkClass)}
-      >
-        EPFO&apos;s own FAQ <ExternalLink className="size-3" />
-      </a>
+      {links.map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn("inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors", linkClass)}
+        >
+          {link.label} <ExternalLink className="size-3" />
+        </a>
+      ))}
     </div>
   );
+}
+
+function DeadlineRuleSources({ tone }: { tone: "red" | "green" | "neutral" }) {
+  return (
+    <SourceLinks
+      tone={tone}
+      links={[
+        { label: "Official notification (PIB)", href: "https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=2234502&reg=3&lang=2" },
+        { label: "EPFO's own FAQ", href: "https://www.epfo.gov.in/faq-epfo" },
+      ]}
+    />
+  );
+}
+
+/** Supporting links for each fix's "What to do" step — same discipline as DeadlineRuleSources
+ * above (Sourced live 2026-09-02): only linked where a genuine, live, first-party EPFO source
+ * was actually found and checked, and only when that source directly matches what the fix text
+ * says to do. Not every fix gets one — several (e.g. Code 3 bands 1-2's "contact your bank",
+ * Code 8's Form 10D branch) have no live official page behind them and are deliberately left
+ * uncited rather than linked to a guess.
+ *
+ * - EPFiGMS (https://epfigms.gov.in/): EPFO's own grievance portal — linked wherever a fix
+ *   explicitly says "file/raise a grievance [through EPFiGMS]".
+ * - UAN Member e-Sewa portal (https://unifiedportal-mem.epfindia.gov.in/): linked wherever a
+ *   fix points the citizen to "the UAN portal" for a specific self-service action.
+ * - Joint Declaration circular: EPFO's own circular explaining the process Code 1's standard
+ *   mismatch fix asks for, hosted on EPFO's CDN (pmvbry-cdn.epfindia.gov.in — same origin as
+ *   epfo.gov.in itself).
+ */
+const EPFIGMS: SourceLink = { label: "EPFO's grievance portal (EPFiGMS)", href: "https://epfigms.gov.in/" };
+const UAN_PORTAL: SourceLink = { label: "UAN Member e-Sewa portal", href: "https://unifiedportal-mem.epfindia.gov.in/" };
+const JOINT_DECLARATION_CIRCULAR: SourceLink = {
+  label: "EPFO circular: Joint Declaration process",
+  href: "https://pmvbry-cdn.epfindia.gov.in/wp-content/uploads/2025/09/SimplificationOfJointDeclarationProcess_WSUCircular-10.pdf",
+};
+
+function sourcesFor(entry: DiagnosisEntry): SourceLink[] | undefined {
+  switch (entry.code) {
+    case "CODE_1_NAME_DOB":
+      return hasBranch(entry, "standard_mismatch") ? [JOINT_DECLARATION_CIRCULAR, UAN_PORTAL] : [EPFIGMS];
+    case "CODE_2_DOE":
+    case "CODE_4_EPS":
+    case "CODE_6_APPROVED_NOT_CREDITED":
+      return [EPFIGMS];
+    case "CODE_5_OLD_CLAIM":
+      return [UAN_PORTAL, EPFIGMS];
+    case "CODE_3_BANK_KYC":
+      if (hasBranch(entry, "joint_account")) return [UAN_PORTAL];
+      if (entry.meta && "band" in entry.meta) return entry.meta.band === 3 ? [EPFIGMS] : undefined;
+      return [EPFIGMS]; // CODE_3_GENERAL (self-check flow) — fix explicitly says "through EPFiGMS"
+    case "CODE_8_ELIGIBILITY":
+      return hasBranch(entry, "over_nine_half_years") ? undefined : [UAN_PORTAL];
+    case "CODE_9_WRONG_FORM":
+      return hasBranch(entry, "unsure") ? [UAN_PORTAL] : undefined;
+    default:
+      return undefined;
+  }
 }
 
 function DeadlineCard({ deadline, filingDate, kycComplete }: { deadline: DeadlineResult; filingDate: string; kycComplete: boolean }) {
@@ -1757,10 +1819,24 @@ export default function Wizard() {
       return undefined;
     }
 
+    // `entries` comes back in selection order, not fix-priority order — priority.ranked is
+    // the actual fix-first ordering (see lib/rule-engine/prioritize.ts). Without this sort,
+    // a card badged "Fix this first" could still render below one badged "Fix next".
+    const orderedEntries = showPriorityRanking
+      ? [...entries].sort((a, b) => {
+          const rankOf = (code: RuleCode) => {
+            const ranked = priority!.ranked.indexOf(code as never);
+            if (ranked >= 0) return ranked;
+            return priority!.ranked.length + priority!.unranked.indexOf(code as never);
+          };
+          return rankOf(a.code) - rankOf(b.code);
+        })
+      : entries;
+
     const selfCheckAllClean = isSelfCheckFlow && selfCheck?.allClean === true;
     const selfCheckUnsuresOnly =
       isSelfCheckFlow && !!selfCheck && selfCheck.issueEntries.length === 0 && selfCheck.unsureItems.length > 0;
-    const selfCheckEntries = isSelfCheckFlow ? selfCheck?.issueEntries ?? [] : entries;
+    const selfCheckEntries = isSelfCheckFlow ? selfCheck?.issueEntries ?? [] : orderedEntries;
     const allCleanCopy = selfCheckAllClean ? SELF_CHECK_ALL_CLEAN_COPY[selfCheckCode!] : undefined;
 
     content = (
@@ -1825,6 +1901,7 @@ export default function Wizard() {
                 <div className="rounded-2xl border border-warm-200 bg-white px-5 py-4 space-y-3">
                   <p className="text-xs font-semibold uppercase tracking-wider text-warm-600">What to do</p>
                   <p className="text-sm text-warm-700 leading-relaxed">{allCleanCopy.whatToDo}</p>
+                  <SourceLinks tone="neutral" links={[EPFIGMS]} />
                 </div>
               )}
 
