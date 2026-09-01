@@ -40,6 +40,7 @@ import { getOrCreateSessionId } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
 import { postDiagnose, DiagnoseApiError } from "@/lib/ui/api-client";
 import { buildFeedbackEvent, type FeedbackContext, type FeedbackSentiment } from "@/lib/ui/feedback";
+import { CompassMark } from "@/components/brand/CompassLogo";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -1106,9 +1107,12 @@ export default function Wizard() {
             <Shield className="size-3.5" />
             Free · No account needed
           </div>
-          <h1 className="font-sans text-4xl font-extrabold text-warm-900 leading-tight tracking-tighter whitespace-nowrap">
-            EPFO <span className="font-display italic font-semibold text-accent-600">Sahayak</span>
-          </h1>
+          <div className="flex items-center gap-3">
+            <CompassMark colorway="brand" size={36} />
+            <h1 className="font-sans text-4xl font-extrabold text-warm-900 leading-tight tracking-tighter whitespace-nowrap">
+              EPFO <span className="font-display italic font-semibold text-accent-600">Sahayak</span>
+            </h1>
+          </div>
           <p className="text-warm-600 text-lg mt-3 leading-relaxed">
             Turn a confusing PF rejection into a clear, actionable plan, or check if you're ready to file.
           </p>
