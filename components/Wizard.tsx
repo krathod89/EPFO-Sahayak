@@ -703,6 +703,40 @@ function ExplCard({ entry, priority }: { entry: DiagnosisEntry; priority?: Entry
 
 // ─── Deadline display ───────────────────────────────────────────────────────
 
+/** The 3/20-day deadline + 12% penal-interest rule is stated to the citizen in two places:
+ * upfront on the filingDate screen (before the check runs) and in DeadlineCard's result
+ * (after it does). Both are the same factual claim, so both get the same source links —
+ * extracted once both existed, rather than copy-pasted a second time. Sourced live
+ * 2026-09-01: the official PIB release for the June 2026 EPF Scheme reform (the rule itself)
+ * and EPFO's own FAQ page (confirms the 20-day figure directly, and who to report a miss to).
+ * Deliberately not citing every fact this way — only where a genuine official source is
+ * actually live; see CODE_3_INTRO's own comment for a fact that still has no live official
+ * document. */
+function DeadlineRuleSources({ tone }: { tone: "red" | "green" | "neutral" }) {
+  const linkClass =
+    tone === "red" ? "text-red-700 hover:text-red-800" : tone === "green" ? "text-green-700 hover:text-green-800" : "text-warm-600 hover:text-warm-700";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <a
+        href="https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=2234502&reg=3&lang=2"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn("inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors", linkClass)}
+      >
+        Official notification (PIB) <ExternalLink className="size-3" />
+      </a>
+      <a
+        href="https://www.epfo.gov.in/faq-epfo"
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn("inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors", linkClass)}
+      >
+        EPFO&apos;s own FAQ <ExternalLink className="size-3" />
+      </a>
+    </div>
+  );
+}
+
 function DeadlineCard({ deadline, filingDate, kycComplete }: { deadline: DeadlineResult; filingDate: string; kycComplete: boolean }) {
   const missed = deadline.status === "MISSED";
   return (
@@ -723,35 +757,7 @@ function DeadlineCard({ deadline, filingDate, kycComplete }: { deadline: Deadlin
           You may be owed 12% penalty interest on your claim amount for this delay. Ask for this by name when you file your grievance.
         </div>
       )}
-      {/* Sourced live 2026-09-01: the official PIB release for the June 2026 EPF Scheme reform
-          (the 3/20-day deadline + 12% penal-interest rule itself) and EPFO's own FAQ page
-          (confirms the 20-day figure directly, and who to report a miss to). Deliberately not
-          citing every fact this way — only where a genuine official source is actually live;
-          see CODE_3_INTRO's own comment for a fact that still has no live official document. */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <a
-          href="https://www.pib.gov.in/PressReleseDetailm.aspx?PRID=2234502&reg=3&lang=2"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(
-            "inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors",
-            missed ? "text-red-700 hover:text-red-800" : "text-green-700 hover:text-green-800"
-          )}
-        >
-          Official notification (PIB) <ExternalLink className="size-3" />
-        </a>
-        <a
-          href="https://www.epfo.gov.in/faq-epfo"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(
-            "inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 transition-colors",
-            missed ? "text-red-700 hover:text-red-800" : "text-green-700 hover:text-green-800"
-          )}
-        >
-          EPFO&apos;s own FAQ <ExternalLink className="size-3" />
-        </a>
-      </div>
+      <DeadlineRuleSources tone={missed ? "red" : "green"} />
     </div>
   );
 }
@@ -1654,10 +1660,13 @@ export default function Wizard() {
           {!suppressesDeadline && (
             <div className="rounded-xl bg-warm-100 border border-warm-200 px-3.5 py-3 flex gap-2.5 text-xs text-warm-600 leading-relaxed">
               <Info className="size-4 shrink-0 mt-0.5 text-warm-400" />
-              <span>
-                EPFO must settle your claim within 3 days (if KYC was complete when you filed) or 20 days (otherwise). Missing this
-                deadline entitles you to 12% penalty interest.
-              </span>
+              <div>
+                <span>
+                  EPFO must settle your claim within 3 days (if KYC was complete when you filed) or 20 days (otherwise). Missing this
+                  deadline entitles you to 12% penalty interest.
+                </span>
+                <DeadlineRuleSources tone="neutral" />
+              </div>
             </div>
           )}
 
