@@ -1893,12 +1893,18 @@ export default function Wizard() {
                     You weren't sure about {selfCheck.unsureItems.length} item{selfCheck.unsureItems.length > 1 ? "s" : ""}:
                   </p>
                   <ul className="space-y-1.5">
-                    {selfCheck.unsureItems.map((key) => (
-                      <li key={key} className="text-sm text-amber-700 flex gap-2">
-                        <span>•</span>
-                        <span>{SELF_CHECK_UI_ITEMS.find((i) => i.key === key)?.question}</span>
-                      </li>
-                    ))}
+                    {selfCheck.unsureItems.map((key) => {
+                      const item = SELF_CHECK_UI_ITEMS.find((i) => i.key === key);
+                      return (
+                        <li key={key} className="text-sm text-amber-700 flex gap-2">
+                          <span>•</span>
+                          <span>
+                            {item?.question}
+                            {item?.hint && <span className="block text-xs text-amber-600 mt-0.5">{item.hint}</span>}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                   <p className="text-xs text-amber-600 leading-relaxed">
                     Double-check these before filing a grievance. If any of them turns out to be an issue, restart and select the
@@ -2192,12 +2198,18 @@ export default function Wizard() {
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 space-y-3">
                   <p className="text-sm font-semibold text-amber-800">Double-check {result.unsureItems.length === 1 ? "this" : "these"} before filing:</p>
                   <ul className="space-y-2">
-                    {result.unsureItems.map((key) => (
-                      <li key={key} className="text-sm text-amber-700 flex gap-2 leading-relaxed">
-                        <span className="shrink-0 mt-0.5">•</span>
-                        <span>{SELF_CHECK_UI_ITEMS.find((i) => i.key === key)?.question}</span>
-                      </li>
-                    ))}
+                    {result.unsureItems.map((key) => {
+                      const item = SELF_CHECK_UI_ITEMS.find((i) => i.key === key);
+                      return (
+                        <li key={key} className="text-sm text-amber-700 flex gap-2 leading-relaxed">
+                          <span className="shrink-0 mt-0.5">•</span>
+                          <span>
+                            {item?.question}
+                            {item?.hint && <span className="block text-xs text-amber-600 mt-1">{item.hint}</span>}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
