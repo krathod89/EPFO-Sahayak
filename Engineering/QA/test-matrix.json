@@ -1,0 +1,3458 @@
+[
+  {
+    "id": "NOTES-000",
+    "area": "meta",
+    "fn": "n/a",
+    "args": [],
+    "expected": {},
+    "rationale": "Two conventions used throughout this file: (1) The task brief's default fn name for the self-check module is 'selfCheckResult'. The actual exported function in lib/rule-engine/selfCheck.ts is `bucketSelfCheck(answers: SelfCheckAnswers): SelfCheckBucket`. All self-check-bucket-level cases below (area 'self-check-bucket', ids CK-*) use fn: 'bucketSelfCheck' accordingly, per the task instructions' own fallback rule. (2) Raw JSON has no `undefined` literal, but several cases need to assert that a result field is genuinely absent/undefined (e.g. `priority` when only 1 code was selected, `deadline` when suppressed, `grievance` when no variant applies at all) rather than an empty object or null. Wherever `expected` contains a field set to JSON `null` (e.g. `\"deadline\": null`, `\"priority\": null`, `\"grievance\": null`), the executor should read this as 'assert the real result's field is `undefined` (absent)', not as a literal `=== null` check — the rule-engine's own TypeScript types never actually assign `null` to these fields, only `undefined` (optional/absent). Also note: array-valued fields in `expected` (entries, issueEntries, issues, tier1/tier2/unranked/ranked, unsureItems, missing, errors) are intended to be matched by their given per-element keys only where each element is itself a partial object (e.g. `{code: \"CODE_2_DOE\"}` should match a real entry that also carries `explanation`/`fix` text) — but the ARRAY itself (length and order) must match exactly, per the task instructions' own array-exact-match rule.",
+    "tags": [
+      "META-NOTE"
+    ]
+  },
+  {
+    "id": "DL-001",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      true,
+      "2026-08-04",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "deadlineDays": 3,
+      "deadlineDate": "2026-08-04",
+      "daysRemaining": 0
+    },
+    "rationale": "3-day deadline (KYC complete at filing) for a claim filed 2026-08-01 is 2026-08-04. Spec Section 5 pseudocode uses `<=` for the NOT_YET_DUE branch, and ticket 03's own 'Done means' explicitly requires the exact-boundary date to be NOT_YET_DUE, not MISSED."
+  },
+  {
+    "id": "DL-002",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      true,
+      "2026-08-03",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "daysRemaining": 1
+    },
+    "rationale": "One calendar day before the 3-day deadline (2026-08-04) must still read as on time, with exactly 1 day remaining. Rule Engine Spec.md Section 5."
+  },
+  {
+    "id": "DL-003",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      true,
+      "2026-08-05",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "MISSED",
+      "daysLate": 1
+    },
+    "rationale": "One calendar day after the 3-day deadline (2026-08-04) must read as missed by exactly 1 day. Rule Engine Spec.md Section 5."
+  },
+  {
+    "id": "DL-004",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      false,
+      "2026-08-21",
+      "today"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "deadlineDays": 20,
+      "deadlineDate": "2026-08-21",
+      "daysRemaining": 0
+    },
+    "rationale": "20-day deadline (KYC not complete) for a claim filed 2026-08-01 is 2026-08-21. Exact-boundary day must be NOT_YET_DUE per Spec Section 5's `<=` rule."
+  },
+  {
+    "id": "DL-005",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      false,
+      "2026-08-20",
+      "today"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "daysRemaining": 1
+    },
+    "rationale": "One day before the 20-day boundary (2026-08-21) — still on time, 1 day remaining."
+  },
+  {
+    "id": "DL-006",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      false,
+      "2026-08-22",
+      "today"
+    ],
+    "expected": {
+      "status": "MISSED",
+      "daysLate": 1
+    },
+    "rationale": "One day after the 20-day boundary (2026-08-21) — missed by exactly 1 day."
+  },
+  {
+    "id": "DL-007",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      true,
+      "2026-08-01",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "daysRemaining": 3
+    },
+    "rationale": "Reference date equal to filing date (zero days elapsed) — the full 3-day allowance should still be remaining. Boundary/edge case not explicit in the spec pseudocode but follows directly from it."
+  },
+  {
+    "id": "DL-008",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      false,
+      "2026-08-01",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "daysRemaining": 20
+    },
+    "rationale": "Same zero-elapsed-time boundary on the 20-day branch — full allowance remaining."
+  },
+  {
+    "id": "DL-009",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-01-30",
+      true,
+      "2026-02-02",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "deadlineDate": "2026-02-02",
+      "daysRemaining": 0
+    },
+    "rationale": "Month-boundary regression check: filing 2026-01-30 + 3 calendar days crosses into February (Jan has 31 days) and must land on 2026-02-02, still NOT_YET_DUE on the exact boundary."
+  },
+  {
+    "id": "DL-010",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-01-01",
+      false,
+      "2026-03-01",
+      "today"
+    ],
+    "expected": {
+      "status": "MISSED",
+      "deadlineDate": "2026-01-21",
+      "daysLate": 39
+    },
+    "rationale": "Large-miss regression: 20-day deadline from 2026-01-01 is 2026-01-21; checked against 2026-03-01 (39 calendar days later, verified via calendar arithmetic: 10 remaining days in Jan + 28 days in Feb 2026 (non-leap) + 1 day into March = 39). Confirms the calendar-day (not working-day) assumption from Spec Section 5/9-gap-6 compounds correctly over a long gap."
+  },
+  {
+    "id": "DL-011",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      true,
+      "2026-08-05",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "MISSED",
+      "basis": "rejection_date"
+    },
+    "rationale": "`basis` must be threaded straight through into the result unchanged, tagging this MISSED result as a confirmed-fact rejection date (deadline.ts's own DeadlineBasis doc comment, and today's rejection_date change)."
+  },
+  {
+    "id": "DL-012",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-01",
+      true,
+      "2026-08-05",
+      "today"
+    ],
+    "expected": {
+      "status": "MISSED",
+      "basis": "today"
+    },
+    "rationale": "Identical math to DL-011 but tagged basis='today' — proves `basis` only labels the result, it never changes the day-count math itself."
+  },
+  {
+    "id": "DL-013",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2026-08-10",
+      true,
+      "2026-08-05",
+      "today"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "daysRemaining": 8
+    },
+    "rationale": "Adversarial/robustness case: a reference date before the filing date (schema.ts's own rejection_date<filing_date guard prevents this for rejection_date, but a stale/skewed 'today' clock could still produce it). checkDeadline is a pure function with no guard of its own, so it should still degrade gracefully to NOT_YET_DUE with a larger-than-normal daysRemaining rather than throw or produce a negative count.",
+    "tags": [
+      "SPEC-GAP"
+    ]
+  },
+  {
+    "id": "DL-014",
+    "area": "deadline-basic",
+    "fn": "checkDeadline",
+    "args": [
+      "2028-02-10",
+      false,
+      "2028-03-01",
+      "rejection_date"
+    ],
+    "expected": {
+      "status": "NOT_YET_DUE",
+      "deadlineDate": "2028-03-01",
+      "daysRemaining": 0
+    },
+    "rationale": "Leap-year regression: 2028 is a leap year (Feb has 29 days). 20 calendar days from 2028-02-10 must land on 2028-03-01 exactly, still NOT_YET_DUE on the boundary — verified independently via calendar arithmetic."
+  },
+  {
+    "id": "DS-001",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "eligibility_issue_type": "under_six_months",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-10",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": null
+    },
+    "rationale": "Rule Engine Spec.md Section 5: the H11 deadline check is suppressed entirely for Code 8, even when a rejection_date is supplied — an ineligible claim was never going to be settled regardless of the clock, so the check must not silently reappear just because a rejection_date is now known.",
+    "tags": []
+  },
+  {
+    "id": "DS-002",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "eligibility_issue_type": "over_nine_half_years",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": null
+    },
+    "rationale": "Same suppression without a rejection_date at all (basis='today' would otherwise apply) — Code 8 must suppress regardless of which basis would have been used."
+  },
+  {
+    "id": "DS-003",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "withdrawal_intent": "full_settlement",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-10",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": null
+    },
+    "rationale": "Rule Engine Spec.md Section 5 (ticket 17): Code 9 (wrong form filed) suppresses the deadline check too, even with a rejection_date supplied — a claim filed under the wrong form was never going to be settled under that form regardless of the clock."
+  },
+  {
+    "id": "DS-004",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "withdrawal_intent": "advance",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": null
+    },
+    "rationale": "Same Code 9 suppression without a rejection_date at all."
+  },
+  {
+    "id": "DS-005",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-25",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "MISSED",
+        "basis": "rejection_date",
+        "daysLate": 4
+      }
+    },
+    "rationale": "A non-suppressed code (Code 2) with a known rejection_date: the deadline is evaluated against the rejection date (EPFO's act of settling the claim), not against today — 20-day deadline is 2026-08-21, rejected 2026-08-25 is 4 calendar days late (verified via calendar arithmetic)."
+  },
+  {
+    "id": "DS-006",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "today_date": "2026-08-25"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "MISSED",
+        "basis": "today",
+        "daysLate": 4
+      }
+    },
+    "rationale": "Same code/dates but no rejection_date given: the check falls back to today_date as the reference and must be tagged basis='today' — an as-of-today estimate, not a confirmed fact (today's change to deadline.ts/index.ts)."
+  },
+  {
+    "id": "DS-007",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-01",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "NOT_YET_DUE",
+        "basis": "rejection_date",
+        "daysRemaining": 20
+      }
+    },
+    "rationale": "Boundary: rejection_date equal to filing_date is a legal, schema-allowed value (schema.ts only rejects rejection_date < filing_date, not ==). Zero days elapsed means the full 20-day allowance is still remaining."
+  },
+  {
+    "id": "DS-008",
+    "area": "deadline-suppression",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_10_UNLISTED_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-25",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "MISSED",
+        "basis": "rejection_date",
+        "daysLate": 4
+      }
+    },
+    "rationale": "Rule Engine Spec.md Section 3, Code 10: unlike Codes 8/9, Code 10 is NOT in DEADLINE_SUPPRESSED_CODES — EPFO gave a real (if unrecognized) reason, so the claim was not inherently unsettleable and the deadline check must run normally."
+  },
+  {
+    "id": "D1-001",
+    "area": "diagnose-code1",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_1_NAME_DOB"
+        ],
+        "today_date": "2026-09-02",
+        "namedob_kyc_page_status": "not_verified"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_1_NAME_DOB",
+          "meta": {
+            "branch": "standard_mismatch"
+          }
+        }
+      ]
+    },
+    "rationale": "Rule Engine Spec.md Section 3, Code 1: 'not_verified' routes to the standard-mismatch branch (Joint Declaration fix). entries array matched by code+meta.branch only, not full explanation/fix text."
+  },
+  {
+    "id": "D1-002",
+    "area": "diagnose-code1",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_1_NAME_DOB"
+        ],
+        "today_date": "2026-09-02",
+        "namedob_kyc_page_status": "unsure"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_1_NAME_DOB",
+          "meta": {
+            "branch": "standard_mismatch"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 1: 'unsure' defaults to the less-severe standard-mismatch branch, not the portal-sync-bug branch — same default-to-less-severe pattern the spec uses elsewhere (e.g. Code 3's bank_account_type unsure)."
+  },
+  {
+    "id": "D1-003",
+    "area": "diagnose-code1",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_1_NAME_DOB"
+        ],
+        "today_date": "2026-09-02",
+        "namedob_kyc_page_status": "approved_and_verified"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_1_NAME_DOB",
+          "meta": {
+            "branch": "portal_sync_bug"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 1: 'approved_and_verified' means the KYC page already shows the detail as correct — this is the portal-sync-bug branch (do not file a Joint Declaration)."
+  },
+  {
+    "id": "D3-001",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-09-02",
+        "bank_account_type": "joint",
+        "bank_kyc_submission_date": "2026-08-24"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "branch": "joint_account"
+          }
+        }
+      ]
+    },
+    "rationale": "Rule Engine Spec.md Section 3, Code 3 (ticket 15): a joint account is a hard rejection independent of timing, checked before the wait-time bands — it wins even when a submission date happens to be present, since the fix has nothing to do with waiting longer."
+  },
+  {
+    "id": "D3-002",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-08-31",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-24"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "band": 1,
+            "workingDays": 5
+          }
+        }
+      ]
+    },
+    "rationale": "Working days strictly between 2026-08-24 (Mon) and 2026-08-31 (Mon), Mon-Fri only, excluding the weekend of Aug 29-30: Aug 25,26,27,28,31 = 5 working days — the upper boundary of Band 1 (0-5 days, spec Section 3 Code 3 table). Verified independently via calendar weekday lookup."
+  },
+  {
+    "id": "D3-003",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-09-01",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-24"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "band": 2,
+            "workingDays": 6
+          }
+        }
+      ]
+    },
+    "rationale": "One working day later than D3-002 (6 working days) crosses into Band 2's lower boundary (6-10 days)."
+  },
+  {
+    "id": "D3-004",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-09-07",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-24"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "band": 2,
+            "workingDays": 10
+          }
+        }
+      ]
+    },
+    "rationale": "10 working days between 2026-08-24 and 2026-09-07 (verified via calendar weekday count) is Band 2's upper boundary — still 'worth checking, not yet clearly stuck', not yet an escalation."
+  },
+  {
+    "id": "D3-005",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-09-08",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-24"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "band": 3,
+            "workingDays": 11
+          }
+        }
+      ]
+    },
+    "rationale": "One working day past D3-004's boundary (11 working days) crosses into Band 3 (more than 10 days) — 'well beyond the typical turnaround, worth escalating' per spec Section 3, generates Variant B grievance eligibility."
+  },
+  {
+    "id": "D3-006",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-08-31",
+        "bank_account_type": "unsure",
+        "bank_kyc_submission_date": "2026-08-24"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "band": 1,
+            "workingDays": 5
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 2: `bank_account_type: unsure` routes to the normal wait-time-band flow, not the joint-account branch — same result as the 'individual' case (D3-002) with identical dates."
+  },
+  {
+    "id": "D3-007",
+    "area": "diagnose-code3",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_3_BANK_KYC"
+        ],
+        "today_date": "2026-08-23",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-22"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_3_BANK_KYC",
+          "meta": {
+            "band": 1,
+            "workingDays": 0
+          }
+        }
+      ]
+    },
+    "rationale": "Weekend edge case: submission on a Saturday (2026-08-22), checked the very next day, a Sunday (2026-08-23) — the working-days-between window (exclusive of submission day) contains only a Sunday, so workingDays=0, still Band 1. Exercises waitBands.ts's Mon-Fri-only counting at a weekend boundary."
+  },
+  {
+    "id": "D8-001",
+    "area": "diagnose-code8",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "today_date": "2026-09-02",
+        "eligibility_issue_type": "under_six_months"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_8_ELIGIBILITY",
+          "meta": {
+            "branch": "under_six_months"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 8 (ticket 16): under-6-months branch — genuine eligibility rule, wait and refile Form 10C."
+  },
+  {
+    "id": "D8-002",
+    "area": "diagnose-code8",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "today_date": "2026-09-02",
+        "eligibility_issue_type": "over_nine_half_years"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_8_ELIGIBILITY",
+          "meta": {
+            "branch": "over_nine_half_years"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 8: over-9.5-years branch — routes to Form 10D pension claim instead of Form 10C lump sum."
+  },
+  {
+    "id": "D8-003",
+    "area": "diagnose-code8",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "today_date": "2026-09-02",
+        "eligibility_issue_type": "unsure"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_8_ELIGIBILITY",
+          "meta": {
+            "branch": "unsure"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 8: 'unsure' is a real third branch (not a default) since the two known thresholds have opposite remedies — guessing wrong would send the citizen down the wrong fix."
+  },
+  {
+    "id": "D9-001",
+    "area": "diagnose-code9",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "today_date": "2026-09-02",
+        "withdrawal_intent": "full_settlement"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_9_WRONG_FORM",
+          "meta": {
+            "branch": "full_settlement"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 9 (ticket 17): full-settlement intent maps to Form 19."
+  },
+  {
+    "id": "D9-002",
+    "area": "diagnose-code9",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "today_date": "2026-09-02",
+        "withdrawal_intent": "pension_only"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_9_WRONG_FORM",
+          "meta": {
+            "branch": "pension_only"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 9: pension-only intent maps to Form 10C."
+  },
+  {
+    "id": "D9-003",
+    "area": "diagnose-code9",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "today_date": "2026-09-02",
+        "withdrawal_intent": "advance"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_9_WRONG_FORM",
+          "meta": {
+            "branch": "advance"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 9: advance-while-employed intent maps to Form 31."
+  },
+  {
+    "id": "D9-004",
+    "area": "diagnose-code9",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "today_date": "2026-09-02",
+        "withdrawal_intent": "unsure"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_9_WRONG_FORM",
+          "meta": {
+            "branch": "unsure"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 3, Code 9: 'unsure' is a real fourth branch since many citizens don't clearly distinguish 'my PF' from 'my EPS/pension' and a wrong guess recommends the wrong form."
+  },
+  {
+    "id": "DM-001",
+    "area": "diagnose-simple-codes",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_2_DOE"
+        ],
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_2_DOE"
+        }
+      ]
+    },
+    "rationale": "Code 2 (Date of Exit) has no branching — a single explanation/fix pair per spec Section 3."
+  },
+  {
+    "id": "DM-002",
+    "area": "diagnose-simple-codes",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_4_EPS"
+        ],
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_4_EPS"
+        }
+      ]
+    },
+    "rationale": "Code 4 (EPS discrepancy) has no branching — a single explanation/fix pair per spec Section 3."
+  },
+  {
+    "id": "DM-003",
+    "area": "diagnose-simple-codes",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_5_OLD_CLAIM"
+        ],
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_5_OLD_CLAIM"
+        }
+      ]
+    },
+    "rationale": "Code 5 (old claim pending) has no branching — a single explanation/fix pair per spec Section 3."
+  },
+  {
+    "id": "DM-004",
+    "area": "diagnose-simple-codes",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_6_APPROVED_NOT_CREDITED"
+        ],
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "entries": [
+        {
+          "code": "CODE_6_APPROVED_NOT_CREDITED"
+        }
+      ]
+    },
+    "rationale": "Code 6 (approved but not credited) has no branching — a single explanation/fix pair per spec Section 3. diagnose() itself has no exclusivity enforcement (that lives in schema.ts), so it structurally supports resolving Code 6 alone."
+  },
+  {
+    "id": "DC-001",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_7_NO_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "entries": [],
+      "selfCheck": {
+        "allClean": true,
+        "unsureItems": [],
+        "issueEntries": []
+      }
+    },
+    "rationale": "Spec Section 3, Code 7: every check passing in its pass direction (note old_claim_pending's polarity flip — 'no' is the pass answer) yields the 'all clean' outcome that generates Variant E."
+  },
+  {
+    "id": "DC-002",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_7_NO_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "no",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "selfCheck": {
+        "allClean": false,
+        "unsureItems": [],
+        "issueEntries": [
+          {
+            "code": "CODE_2_DOE"
+          }
+        ]
+      }
+    },
+    "rationale": "A single issue (Date of Exit not marked) routes to Code 2's explanation/fix, per spec Section 3's self-check routing table."
+  },
+  {
+    "id": "DC-003",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_7_NO_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "no",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "yes"
+        }
+      }
+    ],
+    "expected": {
+      "selfCheck": {
+        "allClean": false,
+        "unsureItems": [],
+        "issueEntries": [
+          {
+            "code": "CODE_2_DOE"
+          },
+          {
+            "code": "CODE_5_OLD_CLAIM"
+          }
+        ]
+      }
+    },
+    "rationale": "Two issues, deliberately given in reverse-of-checklist input relevance (old_claim_pending is checklist item 5, doe_marked is item 1): issueEntries must come back in the checklist's own fixed order (selfCheck.ts's SELF_CHECK_MAPPING order), not any input-dependent order — index.ts relies on this fixed order to pick 'the first issue found' as the grievance subject.",
+    "tags": []
+  },
+  {
+    "id": "DC-004",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_7_NO_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "no",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "selfCheck": {
+        "allClean": false,
+        "unsureItems": [],
+        "issueEntries": [
+          {
+            "code": "CODE_3_BANK_KYC"
+          }
+        ]
+      }
+    },
+    "rationale": "Spec Section 3, Code 7 footnote: the bank-KYC self-check item only confirms verification status, collects no submission date, so it must resolve to CODE_3_GENERAL text with NO band/meta at all — not a wait-time band. The issueEntries[0] object should have no `meta` key (band or branch)."
+  },
+  {
+    "id": "DC-005",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_7_NO_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "no",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "selfCheck": {
+        "allClean": false,
+        "unsureItems": [],
+        "issueEntries": [
+          {
+            "code": "CODE_1_NAME_DOB",
+            "meta": {
+              "branch": "standard_mismatch"
+            }
+          }
+        ]
+      }
+    },
+    "rationale": "Regression case for the 2026-09-02 source-link audit fix noted in diagnose.ts's resolveSelfCheckIssueCode: a self-check-routed Code 1 issue must carry meta.branch='standard_mismatch' (not omit meta entirely) so hasBranch()/sourcesFor() correctly show the Joint Declaration + UAN portal citation rather than silently misreading it as the portal-sync-bug branch. This is exactly the bug the audit found and fixed — a strong regression case."
+  },
+  {
+    "id": "DC-006",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_7_NO_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "unsure",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "selfCheck": {
+        "allClean": false,
+        "unsureItems": [
+          "eps_history_continuous"
+        ],
+        "issueEntries": []
+      }
+    },
+    "rationale": "Spec Section 3, Code 7: an 'unsure' answer must not be treated as clean — allClean stays false and the item is surfaced for double-checking, distinct from a real issue (issueEntries stays empty)."
+  },
+  {
+    "id": "DC-007",
+    "area": "diagnose-self-check",
+    "fn": "diagnose",
+    "args": [
+      {
+        "codes": [
+          "CODE_10_UNLISTED_REASON"
+        ],
+        "today_date": "2026-09-02",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "entries": [],
+      "selfCheck": {
+        "allClean": true,
+        "unsureItems": [],
+        "issueEntries": []
+      }
+    },
+    "rationale": "Spec Section 3, Code 10 (ticket 10): shares Code 7's self-check mechanics exactly — the bucketing logic is code-agnostic, only the downstream grievance/UI copy differs (Variant F vs E). Confirms Code 10 alone triggers the identical self-check branch in diagnose()."
+  },
+  {
+    "id": "PR-001",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      [
+        "CODE_4_EPS"
+      ]
+    ],
+    "expected": {
+      "needsRanking": false,
+      "tier1": [],
+      "tier2": [],
+      "unranked": [],
+      "ranked": [
+        "CODE_4_EPS"
+      ]
+    },
+    "rationale": "Spec Section 4 pseudocode: size(selected) <= 1 needs no ranking at all."
+  },
+  {
+    "id": "PR-002",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      []
+    ],
+    "expected": {
+      "needsRanking": false,
+      "ranked": []
+    },
+    "rationale": "Empty selection — degenerate input, must not throw and must report no ranking needed."
+  },
+  {
+    "id": "PR-003",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      [
+        "CODE_5_OLD_CLAIM",
+        "CODE_2_DOE"
+      ]
+    ],
+    "expected": {
+      "needsRanking": true,
+      "tier1": [
+        "CODE_5_OLD_CLAIM",
+        "CODE_2_DOE"
+      ],
+      "tier2": [],
+      "unranked": [],
+      "ranked": [
+        "CODE_5_OLD_CLAIM",
+        "CODE_2_DOE"
+      ]
+    },
+    "rationale": "Spec Section 4 decision table: 'Both Code 2 and Code 5 selected — no source-stated order between these two Tier 1 codes.' The implementation preserves input/selection order for tier1 (no defined order per spec), which this case documents explicitly."
+  },
+  {
+    "id": "PR-004",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      [
+        "CODE_1_NAME_DOB",
+        "CODE_3_BANK_KYC"
+      ]
+    ],
+    "expected": {
+      "tier1": [],
+      "tier2": [
+        "CODE_3_BANK_KYC",
+        "CODE_1_NAME_DOB"
+      ],
+      "unranked": [],
+      "ranked": [
+        "CODE_3_BANK_KYC",
+        "CODE_1_NAME_DOB"
+      ]
+    },
+    "rationale": "Spec Section 4: 'Both Code 1 and Code 3 selected -> Fix Code 3 (Bank KYC) first, then Code 1.' Deliberately given in the OPPOSITE order ([CODE_1, CODE_3]) to prove tier2 is force-reordered regardless of selection order — the source finding states Bank KYC must always rank above Name/DOB."
+  },
+  {
+    "id": "PR-005",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      [
+        "CODE_3_BANK_KYC",
+        "CODE_2_DOE"
+      ]
+    ],
+    "expected": {
+      "tier1": [
+        "CODE_2_DOE"
+      ],
+      "tier2": [
+        "CODE_3_BANK_KYC"
+      ],
+      "unranked": [],
+      "ranked": [
+        "CODE_2_DOE",
+        "CODE_3_BANK_KYC"
+      ]
+    },
+    "rationale": "Spec Section 4 decision table: 'Any one of Code 2 or Code 5, plus any one of Code 1 or Code 3 -> fix the Tier 1 code first (eligibility), then the Tier 2 code (payment).'"
+  },
+  {
+    "id": "PR-006",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      [
+        "CODE_1_NAME_DOB",
+        "CODE_2_DOE",
+        "CODE_3_BANK_KYC",
+        "CODE_4_EPS",
+        "CODE_5_OLD_CLAIM"
+      ]
+    ],
+    "expected": {
+      "tier1": [
+        "CODE_2_DOE",
+        "CODE_5_OLD_CLAIM"
+      ],
+      "tier2": [
+        "CODE_3_BANK_KYC",
+        "CODE_1_NAME_DOB"
+      ],
+      "unranked": [
+        "CODE_4_EPS"
+      ],
+      "ranked": [
+        "CODE_2_DOE",
+        "CODE_5_OLD_CLAIM",
+        "CODE_3_BANK_KYC",
+        "CODE_1_NAME_DOB"
+      ]
+    },
+    "rationale": "All 5 diagnosable codes together — the full pseudocode from spec Section 4: tier1 in selection order, tier2 force-ordered (Bank KYC before Name/DOB), Code 4 kept unranked and excluded from `ranked` entirely (shown separately, no implied rank per spec Section 9 gap 4)."
+  },
+  {
+    "id": "PR-007",
+    "area": "prioritize",
+    "fn": "prioritize",
+    "args": [
+      [
+        "CODE_4_EPS",
+        "CODE_1_NAME_DOB"
+      ]
+    ],
+    "expected": {
+      "tier1": [],
+      "tier2": [
+        "CODE_1_NAME_DOB"
+      ],
+      "unranked": [
+        "CODE_4_EPS"
+      ],
+      "ranked": [
+        "CODE_1_NAME_DOB"
+      ]
+    },
+    "rationale": "Spec Section 4 decision table: 'Code 4 selected alongside any other code -> show Code 4's explanation/fix separately, without claiming a priority rank.' Code 4 must never appear in `ranked`."
+  },
+  {
+    "id": "PF-001",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_4_EPS"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "priority": null,
+      "deadline": {
+        "status": "NOT_YET_DUE",
+        "basis": "rejection_date",
+        "daysRemaining": 1
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      }
+    },
+    "rationale": "Single-code selection needs no priority ranking (spec Section 4). Code 4 alone still gets a normal Variant A grievance (spec Section 6 lists Code 4 among Variant A's codes) and a normal deadline check."
+  },
+  {
+    "id": "PF-002",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_5_OLD_CLAIM",
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-25",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "priority": {
+        "needsRanking": true,
+        "tier1": [
+          "CODE_5_OLD_CLAIM",
+          "CODE_2_DOE"
+        ],
+        "tier2": [],
+        "unranked": [],
+        "ranked": [
+          "CODE_5_OLD_CLAIM",
+          "CODE_2_DOE"
+        ]
+      },
+      "deadline": {
+        "status": "MISSED",
+        "daysLate": 4,
+        "basis": "rejection_date"
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      },
+      "additionalGrievances": [
+        {
+          "code": "CODE_2_DOE"
+        }
+      ]
+    },
+    "rationale": "Tier1-tie case: spec Section 4 explicitly says Code 2 and Code 5 have 'no source-stated order... unranked relative to each other,' yet index.ts's grievance generator must still pick ONE primary code for the single auto-generated grievance (an MVP simplification, spec Section 6 is silent on multi-code grievances). This case documents that the implementation's tie-break is selection-input order (CODE_5 selected first here, so it wins) — a real, worth-flagging design gap since the spec doesn't define this order and a citizen who happens to click the two checkboxes in the other order gets a different grievance subject for the exact same situation. [UPDATED 2026-09-02, ticket 19: the tie-break itself (which of the two wins the single `grievance` slot) is unchanged and still input-order-dependent — but this is now cosmetic rather than a real gap, since CODE_2's own grievance is no longer silently dropped: it's returned in additionalGrievances instead. See Engineering/tickets/19-multi-code-grievance-suppression.md.]"
+  },
+  {
+    "id": "PF-003",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_1_NAME_DOB",
+          "CODE_3_BANK_KYC"
+        ],
+        "namedob_kyc_page_status": "not_verified",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-24",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-08-31"
+      }
+    ],
+    "expected": {
+      "priority": {
+        "tier1": [],
+        "tier2": [
+          "CODE_3_BANK_KYC",
+          "CODE_1_NAME_DOB"
+        ],
+        "unranked": [],
+        "ranked": [
+          "CODE_3_BANK_KYC",
+          "CODE_1_NAME_DOB"
+        ]
+      },
+      "deadline": {
+        "status": "MISSED",
+        "basis": "today",
+        "daysLate": 27
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      },
+      "additionalGrievances": []
+    },
+    "rationale": "Bank KYC (band 1, only 5 working days elapsed — see D3-002) outranks Name/DOB mismatch per spec Section 4, but Band 1 itself is explicitly not_applicable for a grievance (spec Section 6, 'For Bands 1 and 2, no grievance is generated'). [RESOLVED 2026-09-02, ticket 19: this used to mean the citizen got NO grievance at all — the not_applicable Bank KYC result silently discarded the Name/DOB mismatch's own valid Variant A grievance. Fixed in index.ts: a not_applicable code is now skipped when picking the primary, so Name/DOB's Variant A is promoted instead. additionalGrievances is empty here since Bank KYC's not_applicable result is excluded entirely rather than surfaced as a dead slot. SPEC-GAP tag removed — this is no longer an open gap, see Engineering/tickets/19-multi-code-grievance-suppression.md for the resolution.]"
+  },
+  {
+    "id": "PF-004",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE",
+          "CODE_3_BANK_KYC",
+          "CODE_1_NAME_DOB"
+        ],
+        "namedob_kyc_page_status": "approved_and_verified",
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-10",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-08"
+      }
+    ],
+    "expected": {
+      "priority": {
+        "tier1": [
+          "CODE_2_DOE"
+        ],
+        "tier2": [
+          "CODE_3_BANK_KYC",
+          "CODE_1_NAME_DOB"
+        ],
+        "unranked": [],
+        "ranked": [
+          "CODE_2_DOE",
+          "CODE_3_BANK_KYC",
+          "CODE_1_NAME_DOB"
+        ]
+      },
+      "deadline": {
+        "status": "MISSED",
+        "basis": "today",
+        "daysLate": 35
+      },
+      "diagnosis": {
+        "entries": [
+          {
+            "code": "CODE_2_DOE"
+          },
+          {
+            "code": "CODE_3_BANK_KYC",
+            "meta": {
+              "band": 3
+            }
+          },
+          {
+            "code": "CODE_1_NAME_DOB",
+            "meta": {
+              "branch": "portal_sync_bug"
+            }
+          }
+        ]
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      }
+    },
+    "rationale": "Full 3-tier combination (Tier1 + Tier2 pair + a rich branch on the non-primary code). Tier1's single code (CODE_2_DOE) outranks both Tier2 codes and becomes the grievance primary (Variant A for Code 2), even though Code 1 resolved to the richer portal-sync-bug branch (which would itself be Variant C) — proving priority order, not branch richness, drives grievance selection. `diagnosis.entries` order matches `rejection_codes_selected`'s selection order, not priority order (Wizard.tsx re-sorts for display, the API itself does not)."
+  },
+  {
+    "id": "PF-005",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_4_EPS",
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-15",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "priority": {
+        "tier1": [
+          "CODE_2_DOE"
+        ],
+        "tier2": [],
+        "unranked": [
+          "CODE_4_EPS"
+        ],
+        "ranked": [
+          "CODE_2_DOE"
+        ]
+      },
+      "deadline": {
+        "status": "NOT_YET_DUE",
+        "daysRemaining": 6
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      }
+    },
+    "rationale": "Unranked Code 4 alongside a single Tier1 code: the grievance primary must be the ranked code (Code 2), never the unranked one, per index.ts's `priority?.ranked[0] ?? diagnosableSelected[0]` fallback logic — Code 4 is excluded from `ranked` so it can never win this fallback while a ranked code is present."
+  },
+  {
+    "id": "PF-006",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_6_APPROVED_NOT_CREDITED"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "priority": null,
+      "deadline": {
+        "status": "NOT_YET_DUE"
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "D"
+      }
+    },
+    "rationale": "Code 6 is exclusive (not in DiagnosableCode) so no priority ranking applies, and it is NOT in DEADLINE_SUPPRESSED_CODES — spec Section 5 only suppresses Codes 8/9, so the deadline check still runs normally for Code 6. Grievance: Variant D per spec Section 6."
+  },
+  {
+    "id": "PF-007",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "eligibility_issue_type": "under_six_months",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-10",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": null,
+      "grievance": {
+        "ready": false,
+        "reason": "not_applicable"
+      }
+    },
+    "rationale": "Spec Section 6, Code 8: no grievance for any branch — a genuine eligibility rule can't be overridden by a grievance. Deadline is also suppressed (Section 5)."
+  },
+  {
+    "id": "PF-008",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "eligibility_issue_type": "over_nine_half_years",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": false,
+        "reason": "not_applicable"
+      }
+    },
+    "rationale": "Ticket 17's second code-review pass fix: `not_applicable` is checked BEFORE `missing_info` in buildGrievance() — even with uan/claim_id both entirely absent, the reason must still be `not_applicable`, never `missing_info`. This is the exact regression the ticket fixed (a misleading 'still needs your UAN' intermediate state)."
+  },
+  {
+    "id": "PF-009",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "withdrawal_intent": "pension_only",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": false,
+        "reason": "not_applicable"
+      }
+    },
+    "rationale": "Same not_applicable-before-missing_info precedence check as PF-008, for Code 9 this time — spec Section 6: 'the fix is refiling under the correct form, not something to escalate with EPFO.'"
+  },
+  {
+    "id": "PF-010",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_3_BANK_KYC"
+        ],
+        "bank_account_type": "joint",
+        "bank_kyc_submission_date": "2026-08-24",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "MISSED",
+        "basis": "today",
+        "daysLate": 29
+      },
+      "grievance": {
+        "ready": false,
+        "reason": "not_applicable"
+      }
+    },
+    "rationale": "Joint-account rejection (ticket 15) with uan/claim_id both absent: grievance must still resolve to not_applicable (same precedence fix as PF-008/009, applying to Code 3's joint branch too), while the deadline check still runs normally since Code 3 is not in DEADLINE_SUPPRESSED_CODES."
+  },
+  {
+    "id": "PF-011",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_1_NAME_DOB"
+        ],
+        "namedob_kyc_page_status": "not_verified",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      }
+    },
+    "rationale": "Standard-mismatch Code 1 alone maps to Variant A (spec Section 6 lists Code 1's standard branch among Variant A's codes)."
+  },
+  {
+    "id": "PF-012",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_1_NAME_DOB"
+        ],
+        "namedob_kyc_page_status": "approved_and_verified",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": true,
+        "variant": "C"
+      }
+    },
+    "rationale": "Portal-sync-bug Code 1 branch maps to Variant C, a distinct grievance template from the standard branch (spec Section 6, Variant C)."
+  },
+  {
+    "id": "PF-013",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_7_NO_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "NOT_YET_DUE"
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "E"
+      }
+    },
+    "rationale": "All self-checks clean under Code 7 generates the 'demand the real reason' Variant E grievance (spec Section 3/6), and spec Section 9 gap-10's clarification confirms the deadline check still runs on this path (it is NOT a dead end that skips straight past it)."
+  },
+  {
+    "id": "PF-014",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_7_NO_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "no",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "no",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      }
+    },
+    "rationale": "Two issues found (Date of Exit + EPS); spec Section 9 gap-10: the FIRST issue in the checklist's fixed order (Date of Exit, CODE_2) is the grievance subject — 'using the first issue found (in the checklist's fixed order) as the subject when more than one issue is found.'"
+  },
+  {
+    "id": "PF-015",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_7_NO_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "no",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": null
+    },
+    "rationale": "Spec Section 9 gap-10 / index.ts's kindForSelfCheckIssue: when the ONLY self-check issue found is bank KYC (Code 3), no grievance variant applies — no submission date was collected in this context, so there's no wait-time band to justify Variant B, and Variant A never covers Code 3. `grievance` must be entirely absent, not an object with reason='not_applicable'."
+  },
+  {
+    "id": "PF-016",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_7_NO_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "unsure",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": null
+    },
+    "rationale": "Domain correctness: an unsure-only self-check result means the citizen has NOT actually ruled out the common causes, so generating Variant E's 'I have checked my own records... and found no issue' text would be false. The implementation correctly requires allClean (issueEntries AND unsureItems both empty) before offering Variant E — an unsure-only result must produce no grievance at all."
+  },
+  {
+    "id": "PF-017",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_10_UNLISTED_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "NOT_YET_DUE"
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "F"
+      }
+    },
+    "rationale": "Spec Section 3, Code 10: all self-checks clean generates Variant F ('demand clarification'), distinct from Code 7's Variant E, and the deadline check runs normally (Code 10 is not in DEADLINE_SUPPRESSED_CODES, unlike Codes 8/9)."
+  },
+  {
+    "id": "PF-018",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_10_UNLISTED_REASON"
+        ],
+        "self_check_answers": {
+          "doe_marked": "no",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        },
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": true,
+        "variant": "A"
+      }
+    },
+    "rationale": "Code 10's self-check issue-found path uses the exact same kindForSelfCheckIssue mechanics as Code 7 (spec Section 3, Code 10: 'The bucketing logic is code-agnostic; only the downstream copy differs from Code 7') — a real issue still routes to a normal Variant A grievance, not Variant F."
+  },
+  {
+    "id": "PF-019",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_6_APPROVED_NOT_CREDITED",
+          "CODE_8_ELIGIBILITY"
+        ],
+        "eligibility_issue_type": "under_six_months",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-03",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": null,
+      "grievance": {
+        "ready": true,
+        "variant": "D"
+      }
+    },
+    "rationale": "Adversarial/defensive test: this combination is invalid per schema.ts (both codes are mutually exclusive) and would never reach runPostRejectionFlow() through the real API — but the orchestrator has its own documented internal guarantee (index.ts's EXCLUSIVE_CODE_GRIEVANCE_KIND, iterated in fixed key order Code 6 -> 8 -> 9) that Code 6 always wins if a caller ever bypasses validation. This tests that the orchestrator's own stated invariant holds; also confirms the deadline suppression check (`.some()` over all selected codes) fires from Code 8's mere presence even though Code 6 'wins' the grievance.",
+    "tags": [
+      "SPEC-GAP"
+    ]
+  },
+  {
+    "id": "PF-020",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_3_BANK_KYC"
+        ],
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-24",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": false,
+        "reason": "not_applicable"
+      }
+    },
+    "rationale": "Band 2 (7 working days between 2026-08-24 and 2026-09-02, verified via calendar weekday count) — spec Section 6: 'For Bands 1 and 2, no grievance is generated.'"
+  },
+  {
+    "id": "PF-021",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_3_BANK_KYC"
+        ],
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-10",
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-20",
+        "today_date": "2026-09-08"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": true,
+        "variant": "B"
+      },
+      "deadline": {
+        "status": "MISSED",
+        "basis": "rejection_date",
+        "daysLate": 16
+      }
+    },
+    "rationale": "Band 3 (well over 10 working days between 2026-08-10 and 2026-09-08) generates a ready Variant B grievance per spec Section 6, combined with a MISSED 3-day deadline (deadline 2026-08-04, rejected 2026-08-20, 16 calendar days late) that should also get cited in the grievance body (deadlineCited)."
+  },
+  {
+    "id": "PF-023",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-25",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "grievance": {
+        "ready": true,
+        "variant": "A",
+        "deadlineCited": true
+      }
+    },
+    "rationale": "MISSED deadline (confirmed via rejection_date) must be cited in the grievance body (spec Section 6's deadline citation block, `deadlineCited: true`)."
+  },
+  {
+    "id": "PF-024",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "today_date": "2026-08-10"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "NOT_YET_DUE",
+        "basis": "today",
+        "daysRemaining": 11
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A",
+        "deadlineCited": false
+      }
+    },
+    "rationale": "NOT_YET_DUE (basis='today', no rejection_date given) must NOT get a deadline citation appended — only a MISSED status triggers the citation block, regardless of basis."
+  },
+  {
+    "id": "PF-025",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "today_date": "2026-08-25"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "MISSED",
+        "basis": "today",
+        "daysLate": 4
+      },
+      "grievance": {
+        "ready": true,
+        "variant": "A",
+        "deadlineCited": true
+      }
+    },
+    "rationale": "MISSED via the 'today' fallback (no rejection_date known) must still cite the deadline in the grievance — but the citation text must be hedged (conditional 'if my rejection was issued after X'), not asserted as settled fact, since 'today' is only a stand-in for the real decision date. See the grievance-area cases (GR-015) and 'Suspected existing bugs' for a specific wording concern with this exact basis."
+  },
+  {
+    "id": "PF-026",
+    "area": "post-rejection-flow",
+    "fn": "runPostRejectionFlow",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": false,
+        "rejection_date": "2026-08-01",
+        "today_date": "2026-09-02"
+      }
+    ],
+    "expected": {
+      "deadline": {
+        "status": "NOT_YET_DUE",
+        "basis": "rejection_date",
+        "daysRemaining": 20
+      }
+    },
+    "rationale": "Boundary: rejection_date equal to filing_date is schema-legal (only < is rejected) — zero days elapsed, full 20-day allowance remaining, at the runPostRejectionFlow integration level (duplicate-but-distinct from DS-007's more narrowly-scoped assertion)."
+  },
+  {
+    "id": "GR-001",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "standard",
+          "code": "CODE_2_DOE",
+          "codeName": "Date of Exit not marked",
+          "issueSentence": "EPFO does not know your last working day at your previous employer."
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "A",
+      "deadlineCited": false,
+      "subject": "Grievance regarding rejection of PF claim: Date of Exit not marked",
+      "body": "My PF withdrawal claim (Claim ID: MH1234567890123, UAN: 100123456789) was rejected. The stated reason was: Date of Exit not marked. EPFO does not know your last working day at your previous employer. I request EPFO to review and resettle my claim."
+    },
+    "rationale": "Variant A's exact body follows spec Section 6's literal template with placeholders substituted, and issueSentence is the first sentence of Code 2's own spec-verbatim explanation text (codes.ts documents its copy as reused verbatim from spec Section 3). Subject line uses spec Section 6's literal em-dash punctuation ('Grievance regarding rejection of PF claim — {CODE_NAME}') — flagged SPEC-GAP since the shipped implementation appears to use a colon instead ('...claim: {CODE_NAME}'), a likely deliberate but never-back-ported STE style edit across every variant; see 'Suspected existing bugs.' [RESOLVED 2026-09-02: product decision was to update the spec doc to match the shipped code's colon/parenthetical punctuation, not the other way around — expected value updated accordingly, SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "GR-002",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "standard",
+          "code": "CODE_5_OLD_CLAIM",
+          "codeName": "An old claim is still pending",
+          "issueSentence": "You have an earlier claim (a Form 19, 10C, or 31) still open in EPFO's system."
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "missing_info",
+      "missing": [
+        "uan"
+      ]
+    },
+    "rationale": "Spec Section 2: uan/claim_id are 'Required to generate grievance text' — a missing uan alone must surface exactly `missing: ['uan']`, not block on claim_id too."
+  },
+  {
+    "id": "GR-003",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "",
+        "claim_id": "",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "standard",
+          "code": "CODE_1_NAME_DOB",
+          "codeName": "Name / DOB / father's-name mismatch",
+          "issueSentence": "x"
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "missing_info",
+      "missing": [
+        "uan",
+        "claim_id"
+      ]
+    },
+    "rationale": "Both fields missing must list both, in the order buildGrievance() checks them (uan, then claim_id)."
+  },
+  {
+    "id": "GR-004",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "bank_kyc_escalate",
+          "band": 3,
+          "bank_kyc_submission_date": "2026-08-10"
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "B",
+      "subject": "Grievance regarding unverified bank KYC (Claim ID MH1234567890123)",
+      "body": "My PF claim (Claim ID: MH1234567890123, UAN: 100123456789) is blocked because my bank KYC is not verified. I submitted my bank KYC on 2026-08-10. This has taken longer than the typical bank/NPCI verification turnaround. I request EPFO to check the status of my bank KYC verification directly and resettle my claim."
+    },
+    "rationale": "Variant B (Band 3 only) per spec Section 6's literal template. Subject uses spec's em-dash format — see GR-001's note on the likely colon-vs-em-dash style drift. [RESOLVED 2026-09-02: product decision was to update the spec doc to match the shipped code's colon/parenthetical punctuation, not the other way around — expected value updated accordingly, SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "GR-005",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "bank_kyc_escalate",
+          "band": 1,
+          "bank_kyc_submission_date": "2026-08-31"
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "not_applicable"
+    },
+    "rationale": "Band 1 — spec Section 6: 'For Bands 1 and 2, no grievance is generated — the recommended action is to wait or check with your bank directly.'"
+  },
+  {
+    "id": "GR-006",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "bank_kyc_escalate",
+          "band": 2,
+          "bank_kyc_submission_date": "2026-08-24"
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "not_applicable"
+    },
+    "rationale": "Band 2 — same 'no grievance yet' rule as Band 1."
+  },
+  {
+    "id": "GR-007",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "",
+        "claim_id": "",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "joint_account"
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "not_applicable"
+    },
+    "rationale": "Spec Section 6, ticket 15: joint-account rejection never generates a grievance, regardless of uan/claim_id — 'the fix is opening an individual bank account and resubmitting, not something to escalate with EPFO.' Tests not_applicable-before-missing_info precedence at the buildGrievance level directly."
+  },
+  {
+    "id": "GR-008",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "",
+        "claim_id": "",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "eligibility"
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "not_applicable"
+    },
+    "rationale": "Spec Section 6, ticket 16: eligibility rejections never generate a grievance for any of Code 8's 3 branches."
+  },
+  {
+    "id": "GR-009",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "",
+        "claim_id": "",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "wrong_form"
+        }
+      }
+    ],
+    "expected": {
+      "ready": false,
+      "reason": "not_applicable"
+    },
+    "rationale": "Spec Section 6, ticket 17: wrong-form-filed rejections never generate a grievance for any of Code 9's 4 branches."
+  },
+  {
+    "id": "GR-010",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "portal_sync_bug"
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "C",
+      "subject": "Grievance: claim screen shows outdated mismatch, KYC page already Approved and Verified (Claim ID MH1234567890123)",
+      "body": "My PF claim (Claim ID: MH1234567890123, UAN: 100123456789) was rejected for a name/DOB/father's-name mismatch. My KYC page already shows this detail as Approved and Verified (screenshot attached). My claim status page still shows this as an error (screenshot attached). This appears to be a synchronization issue between EPFO's KYC and claim-processing systems, not an actual mismatch in my records. I request EPFO to correct this synchronization issue and reprocess my claim without requiring a new Joint Declaration."
+    },
+    "rationale": "Variant C's exact body per spec Section 6's literal template. Subject uses spec's em-dash format — see GR-001's style-drift note. [RESOLVED 2026-09-02: product decision was to update the spec doc to match the shipped code's colon/parenthetical punctuation, not the other way around — expected value updated accordingly, SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "GR-011",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "approved_not_credited"
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "D",
+      "subject": "Grievance: PF claim approved but payment not received (Claim ID MH1234567890123)",
+      "body": "My PF claim (Claim ID: MH1234567890123, UAN: 100123456789) was approved. The payment has not reached my bank account as of 2026-09-02. I have checked my bank statement and found no matching transfer. I request EPFO to trace this payment and confirm its status, or reissue it if it failed."
+    },
+    "rationale": "Variant D's exact body per spec Section 6's literal template, using {TODAY_DATE}=2026-09-02. Subject uses spec's em-dash format — see GR-001's style-drift note. [RESOLVED 2026-09-02: product decision was to update the spec doc to match the shipped code's colon/parenthetical punctuation, not the other way around — expected value updated accordingly, SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "GR-012",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "demand_reason"
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "E",
+      "subject": "Grievance: PF claim rejected with no reason given (Claim ID MH1234567890123)",
+      "body": "My PF claim (Claim ID: MH1234567890123, UAN: 100123456789), filed on 2026-08-01, was rejected. EPFO's claim status did not state a reason. I have checked my own records for the common causes of rejection (Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim) and found no issue on my end. I request EPFO to state the specific reason my claim was rejected, and to reprocess my claim once I have that information."
+    },
+    "rationale": "Variant E's exact body per spec Section 6's literal template. Given side-by-side with GR-013 (Variant F) so a diff trivially confirms Code 10's Variant F does not reuse this 'did not state a reason' wording (spec Section 3, Code 10: 'Must NOT reuse Variant E's wording'). Subject line style-drift flagged as usual. [RESOLVED 2026-09-02: product decision was to update the spec doc to match the shipped code's colon/parenthetical punctuation, not the other way around — expected value updated accordingly, SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "GR-013",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "demand_clarification"
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "F",
+      "subject": "Grievance: PF claim rejected, stated reason unclear (Claim ID MH1234567890123)",
+      "body": "My PF claim (Claim ID: MH1234567890123, UAN: 100123456789), filed on 2026-08-01, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes (Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim) and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information."
+    },
+    "rationale": "Variant F's exact body per spec Section 6's literal template (ticket 10). Compare directly against GR-012 (Variant E) — the two must differ in their opening factual claim (E: 'did not state a reason'; F: 'gave a reason, but it did not clearly match'), which this pair makes trivially diffable. [RESOLVED 2026-09-02: product decision was to update the spec doc to match the shipped code's colon/parenthetical punctuation, not the other way around — expected value updated accordingly, SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "GR-014",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "deadline": {
+          "status": "MISSED",
+          "deadlineDays": 3,
+          "deadlineDate": "2026-08-04",
+          "basis": "rejection_date",
+          "daysLate": 4
+        },
+        "kind": {
+          "type": "standard",
+          "code": "CODE_2_DOE",
+          "codeName": "Date of Exit not marked",
+          "issueSentence": "EPFO does not know your last working day at your previous employer."
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "A",
+      "deadlineCited": true
+    },
+    "rationale": "MISSED with basis='rejection_date' means the citizen told us EPFO's actual rejection date, so the citation should state the miss as a confirmed fact ('was rejected after this deadline, missed by 4 day(s)') and request the 12% penalty outright — not hedge it as a maybe. Structural fields only asserted here; see 'Suspected existing bugs' for a specific concern with the parallel basis='today' case (GR-015)."
+  },
+  {
+    "id": "GR-015",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "deadline": {
+          "status": "MISSED",
+          "deadlineDays": 3,
+          "deadlineDate": "2026-08-04",
+          "basis": "today",
+          "daysLate": 4
+        },
+        "kind": {
+          "type": "standard",
+          "code": "CODE_2_DOE",
+          "codeName": "Date of Exit not marked",
+          "issueSentence": "EPFO does not know your last working day at your previous employer."
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "A",
+      "deadlineCited": true
+    },
+    "rationale": "MISSED with basis='today' (no confirmed rejection date) must hedge the citation as a conditional ('If my rejection was issued after {deadline_date}, I am entitled...') rather than assert the miss as fact — since a rejection almost certainly DID already happen by 'today' in a post-rejection flow, the exact wording must not claim 'no resolution has been communicated to me' (that would be false — the citizen already has a rejection in hand, they just don't know its exact date). Flag this exact phrasing for manual review against the live grievance.ts output — see 'Suspected existing bugs.'",
+    "tags": [
+      "SPEC-GAP"
+    ]
+  },
+  {
+    "id": "GR-016",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "deadline": {
+          "status": "NOT_YET_DUE",
+          "deadlineDays": 3,
+          "deadlineDate": "2026-08-04",
+          "basis": "today",
+          "daysRemaining": 2
+        },
+        "kind": {
+          "type": "standard",
+          "code": "CODE_2_DOE",
+          "codeName": "Date of Exit not marked",
+          "issueSentence": "EPFO does not know your last working day at your previous employer."
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "variant": "A",
+      "deadlineCited": false
+    },
+    "rationale": "NOT_YET_DUE never triggers a citation regardless of basis — spec Section 6's citation block is appended 'only when status = MISSED.'"
+  },
+  {
+    "id": "GR-017",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "standard",
+          "code": "CODE_4_EPS",
+          "codeName": "EPS (pension) discrepancy",
+          "issueSentence": "Your Employee Pension Scheme (EPS) contribution record shows zero, or is missing, for a period when you were working and should have had contributions."
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "suggestedCategory": "Pension Settlement"
+    },
+    "rationale": "codes.ts's SUGGESTED_CATEGORY_BY_CODE (spec Section 6's 'suggestedCategory' hint): Code 4 (EPS) is the one deliberate differentiation to 'Pension Settlement,' since it is literally the pension component of the claim, unlike every other code which defaults to 'PF Withdrawal.'"
+  },
+  {
+    "id": "GR-018",
+    "area": "grievance",
+    "fn": "buildGrievance",
+    "args": [
+      {
+        "uan": "100123456789",
+        "claim_id": "MH1234567890123",
+        "filing_date": "2026-08-01",
+        "today_date": "2026-09-02",
+        "kind": {
+          "type": "standard",
+          "code": "CODE_2_DOE",
+          "codeName": "Date of Exit not marked",
+          "issueSentence": "EPFO does not know your last working day at your previous employer."
+        }
+      }
+    ],
+    "expected": {
+      "ready": true,
+      "suggestedCategory": "PF Withdrawal"
+    },
+    "rationale": "Every code except Code 4 defaults to 'PF Withdrawal' per codes.ts's SUGGESTED_CATEGORY_BY_CODE table."
+  },
+  {
+    "id": "SC-001",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_1_NAME_DOB"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "namedob_kyc_page_status is required when CODE_1_NAME_DOB is selected"
+      ]
+    },
+    "rationale": "Spec Section 2: namedob_kyc_page_status is 'Required if code1 selected.'",
+    "tags": []
+  },
+  {
+    "id": "SC-002",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_1_NAME_DOB"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "namedob_kyc_page_status": "not_verified"
+      }
+    ],
+    "expected": {
+      "errors": []
+    },
+    "rationale": "A fully-satisfied single-code request must pass cross-field validation with zero errors."
+  },
+  {
+    "id": "SC-003",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_3_BANK_KYC"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "bank_account_type is required when CODE_3_BANK_KYC is selected",
+        "bank_kyc_submission_date is required when CODE_3_BANK_KYC is selected and the account is not joint"
+      ]
+    },
+    "rationale": "With bank_account_type entirely absent, BOTH the account-type check AND the submission-date check fire simultaneously — schema.ts's submission-date guard only excuses the field when bank_account_type is explicitly 'joint', and undefined !== 'joint', so this is a genuine two-error case, not just one. Order matches schema.ts's own check order."
+  },
+  {
+    "id": "SC-004",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_3_BANK_KYC"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "bank_account_type": "individual"
+      }
+    ],
+    "expected": {
+      "errors": [
+        "bank_kyc_submission_date is required when CODE_3_BANK_KYC is selected and the account is not joint"
+      ]
+    },
+    "rationale": "bank_account_type present but not 'joint' still requires a submission date."
+  },
+  {
+    "id": "SC-005",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_3_BANK_KYC"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "bank_account_type": "joint"
+      }
+    ],
+    "expected": {
+      "errors": []
+    },
+    "rationale": "Spec Section 2 (ticket 15): 'Not needed for a joint-account rejection' — the submission-date requirement must be skipped entirely when bank_account_type is 'joint'."
+  },
+  {
+    "id": "SC-006",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_7_NO_REASON"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "self_check_answers is required when CODE_7_NO_REASON is selected"
+      ]
+    },
+    "rationale": "Spec Section 2: self_check_answers is 'Required if code7 or code10 selected.'"
+  },
+  {
+    "id": "SC-007",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_10_UNLISTED_REASON"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "self_check_answers is required when CODE_10_UNLISTED_REASON is selected"
+      ]
+    },
+    "rationale": "Same requirement extends to Code 10 (ticket 10: 'shares Code 7's self-check mechanics exactly')."
+  },
+  {
+    "id": "SC-008",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_8_ELIGIBILITY"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "eligibility_issue_type is required when CODE_8_ELIGIBILITY is selected"
+      ]
+    },
+    "rationale": "Spec Section 2 (ticket 16): eligibility_issue_type is 'Required if code8 selected.'"
+  },
+  {
+    "id": "SC-009",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_9_WRONG_FORM"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "withdrawal_intent is required when CODE_9_WRONG_FORM is selected"
+      ]
+    },
+    "rationale": "Spec Section 2 (ticket 17): withdrawal_intent is 'Required if code9 selected.'"
+  },
+  {
+    "id": "SC-010",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_7_NO_REASON",
+          "CODE_8_ELIGIBILITY"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        },
+        "eligibility_issue_type": "under_six_months"
+      }
+    ],
+    "expected": {
+      "errors": [
+        "CODE_6_APPROVED_NOT_CREDITED, CODE_7_NO_REASON, CODE_8_ELIGIBILITY, CODE_9_WRONG_FORM, CODE_10_UNLISTED_REASON cannot be combined with any other code, including each other"
+      ]
+    },
+    "rationale": "Spec Section 4: 'code6, code7, code8..., code9..., and code10... cannot be selected alongside another code, or each other.' Both codes' own required-field checks are individually satisfied here, isolating this to exactly one error: the exclusivity violation."
+  },
+  {
+    "id": "SC-011",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_6_APPROVED_NOT_CREDITED",
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "CODE_6_APPROVED_NOT_CREDITED, CODE_7_NO_REASON, CODE_8_ELIGIBILITY, CODE_9_WRONG_FORM, CODE_10_UNLISTED_REASON cannot be combined with any other code, including each other"
+      ]
+    },
+    "rationale": "An exclusive code (Code 6) combined with a normal diagnosable code (Code 2) must also be rejected — the exclusivity rule isn't only about two exclusive codes together."
+  },
+  {
+    "id": "SC-012",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_2_DOE",
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "rejection_codes_selected must not contain duplicate codes"
+      ]
+    },
+    "rationale": "Spec Section 2: rejection_codes_selected is a 'set' — a literal duplicate must be rejected outright, not silently deduplicated (schema.ts's own comment: silent dedup would produce a doubled-up explanation/fix in the response)."
+  },
+  {
+    "id": "SC-013",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-10",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-05"
+      }
+    ],
+    "expected": {
+      "errors": [
+        "rejection_date cannot be before filing_date"
+      ]
+    },
+    "rationale": "Domain logic: a claim cannot be rejected before it was filed — this is a genuinely impossible state that would corrupt the H11 deadline math if allowed through."
+  },
+  {
+    "id": "SC-014",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "2026-08-10",
+        "kyc_complete_at_filing": true,
+        "rejection_date": "2026-08-10"
+      }
+    ],
+    "expected": {
+      "errors": []
+    },
+    "rationale": "Boundary: rejection_date EQUAL to filing_date (same-day rejection) is legal — schema.ts's guard is strictly `<`, not `<=`. A same-day rejection is a real, if unusual, possibility (e.g. an instantly-auto-rejected claim)."
+  },
+  {
+    "id": "SC-015",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_2_DOE",
+          "CODE_3_BANK_KYC"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "bank_account_type": "individual",
+        "bank_kyc_submission_date": "2026-08-05"
+      }
+    ],
+    "expected": {
+      "errors": []
+    },
+    "rationale": "A fully-satisfied, legitimate multi-code (Tier1+Tier2) request must produce zero cross-field errors."
+  },
+  {
+    "id": "SC-016",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_9_WRONG_FORM",
+          "CODE_10_UNLISTED_REASON"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "withdrawal_intent": "full_settlement",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "errors": [
+        "CODE_6_APPROVED_NOT_CREDITED, CODE_7_NO_REASON, CODE_8_ELIGIBILITY, CODE_9_WRONG_FORM, CODE_10_UNLISTED_REASON cannot be combined with any other code, including each other"
+      ]
+    },
+    "rationale": "A different exclusive-pair combination (Code 9 + Code 10) — both are exclusive with everything, INCLUDING each other, per spec Section 4's explicit list. Broadens exclusivity coverage beyond the Code7+Code8 and Code6+Code2 pairs already tested."
+  },
+  {
+    "id": "SC-017",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_6_APPROVED_NOT_CREDITED",
+          "CODE_7_NO_REASON"
+        ],
+        "filing_date": "2026-08-01",
+        "kyc_complete_at_filing": true,
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "errors": [
+        "CODE_6_APPROVED_NOT_CREDITED, CODE_7_NO_REASON, CODE_8_ELIGIBILITY, CODE_9_WRONG_FORM, CODE_10_UNLISTED_REASON cannot be combined with any other code, including each other"
+      ]
+    },
+    "rationale": "Code 6 + Code 7 together — a third distinct exclusive-pair combination for broader coverage."
+  },
+  {
+    "id": "SC-018",
+    "area": "schema-validation",
+    "fn": "validatePostRejectionCrossFields",
+    "args": [
+      {
+        "entry_point": "post_rejection",
+        "rejection_codes_selected": [
+          "CODE_2_DOE"
+        ],
+        "filing_date": "1990-01-01",
+        "kyc_complete_at_filing": true
+      }
+    ],
+    "expected": {
+      "errors": [
+        "filing_date is before 2001, too early for a PF claim"
+      ]
+    },
+    "rationale": "The client-side dateInputError() (lib/ui/date-validation.ts) rejects dates before 2001-01-01 or in the future. [RESOLVED 2026-09-02, bug #5: validatePostRejectionCrossFields now mirrors that same bound server-side (filing_date, rejection_date, bank_kyc_submission_date), via an injectable `today` param defaulting to the server's real clock — see schema.ts's implausibleDateReason(). SPEC-GAP tag removed.]"
+  },
+  {
+    "id": "RD-001",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "ready",
+      "issues": [],
+      "unsureItems": []
+    },
+    "rationale": "Spec Section 7 pseudocode: N==0 and M==0 -> 'Looks ready to file.'"
+  },
+  {
+    "id": "RD-002",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "no",
+          "kyc_verified_not_just_approved": "no",
+          "name_dob_fathername_consistent": "no",
+          "eps_history_continuous": "no",
+          "old_claim_pending": "yes"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "issues_found",
+      "issues": [
+        {
+          "code": "CODE_2_DOE"
+        },
+        {
+          "code": "CODE_3_BANK_KYC"
+        },
+        {
+          "code": "CODE_1_NAME_DOB"
+        },
+        {
+          "code": "CODE_4_EPS"
+        },
+        {
+          "code": "CODE_5_OLD_CLAIM"
+        }
+      ],
+      "unsureItems": []
+    },
+    "rationale": "Every check fails in its issue direction (spec Section 7's polarity table, including old_claim_pending's flip) — all 5 issues surface, in the checklist's fixed order."
+  },
+  {
+    "id": "RD-003",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "no",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "issues_found",
+      "issues": [
+        {
+          "code": "CODE_1_NAME_DOB",
+          "meta": {
+            "branch": "standard_mismatch"
+          }
+        }
+      ]
+    },
+    "rationale": "Spec Section 7: 'the portal-sync-bug branch does not apply pre-filing, since there is no claim screen yet to disagree with the KYC page' — a single Code 1 pre-filing issue must always resolve to the standard_mismatch branch, never portal_sync_bug."
+  },
+  {
+    "id": "RD-004",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "unsure",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "mostly_ready",
+      "issues": [],
+      "unsureItems": [
+        "eps_history_continuous"
+      ]
+    },
+    "rationale": "Spec Section 7 pseudocode: N==0 and M>0 -> 'Looks mostly ready. Double-check M thing(s).'"
+  },
+  {
+    "id": "RD-005",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "no",
+          "kyc_verified_not_just_approved": "unsure",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "issues_found",
+      "issues": [
+        {
+          "code": "CODE_2_DOE"
+        }
+      ],
+      "unsureItems": [
+        "kyc_verified_not_just_approved"
+      ]
+    },
+    "rationale": "Spec Section 7 pseudocode: N>0 takes priority over M — a mix of 1 issue and 1 unsure item must report 'issues_found' (with the unsure item still listed as a secondary double-check), not 'mostly_ready'."
+  },
+  {
+    "id": "RD-006",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "yes",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "yes"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "issues_found",
+      "issues": [
+        {
+          "code": "CODE_5_OLD_CLAIM"
+        }
+      ],
+      "unsureItems": []
+    },
+    "rationale": "Isolated polarity check: old_claim_pending='yes' (with everything else clean) is itself the one issue — 'yes' is the flipped issue-direction answer for this specific item, per spec Section 7's polarity table."
+  },
+  {
+    "id": "RD-007",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "unsure",
+          "kyc_verified_not_just_approved": "unsure",
+          "name_dob_fathername_consistent": "unsure",
+          "eps_history_continuous": "unsure",
+          "old_claim_pending": "unsure"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "mostly_ready",
+      "issues": [],
+      "unsureItems": [
+        "doe_marked",
+        "kyc_verified_not_just_approved",
+        "name_dob_fathername_consistent",
+        "eps_history_continuous",
+        "old_claim_pending"
+      ]
+    },
+    "rationale": "All 5 items unsure — still 'mostly_ready' (N==0), with every item listed to double-check, in the checklist's fixed order."
+  },
+  {
+    "id": "RD-008",
+    "area": "pre-filing-readiness",
+    "fn": "runPreFilingFlow",
+    "args": [
+      {
+        "entry_point": "pre_filing",
+        "self_check_answers": {
+          "doe_marked": "yes",
+          "kyc_verified_not_just_approved": "no",
+          "name_dob_fathername_consistent": "yes",
+          "eps_history_continuous": "yes",
+          "old_claim_pending": "no"
+        }
+      }
+    ],
+    "expected": {
+      "outcome": "issues_found",
+      "issues": [
+        {
+          "code": "CODE_3_BANK_KYC"
+        }
+      ]
+    },
+    "rationale": "Spec Section 7: the bank-KYC pre-filing issue reuses 'Code 3 explanation/fix (general text only — no submission date is collected here, so no wait-time band)' — the resulting issue entry must have no band meta at all."
+  },
+  {
+    "id": "CK-001",
+    "area": "self-check-bucket",
+    "fn": "bucketSelfCheck",
+    "args": [
+      {
+        "doe_marked": "yes",
+        "kyc_verified_not_just_approved": "yes",
+        "name_dob_fathername_consistent": "yes",
+        "eps_history_continuous": "yes",
+        "old_claim_pending": "no"
+      }
+    ],
+    "expected": {
+      "issues": [],
+      "unsure": [],
+      "passed": [
+        "doe_marked",
+        "kyc_verified_not_just_approved",
+        "name_dob_fathername_consistent",
+        "eps_history_continuous",
+        "old_claim_pending"
+      ]
+    },
+    "rationale": "Lowest-level bucketing check (selfCheck.ts): every answer in its pass direction sorts entirely into `passed`, in the checklist's fixed order."
+  },
+  {
+    "id": "CK-002",
+    "area": "self-check-bucket",
+    "fn": "bucketSelfCheck",
+    "args": [
+      {
+        "doe_marked": "no",
+        "kyc_verified_not_just_approved": "no",
+        "name_dob_fathername_consistent": "no",
+        "eps_history_continuous": "no",
+        "old_claim_pending": "yes"
+      }
+    ],
+    "expected": {
+      "issues": [
+        {
+          "key": "doe_marked",
+          "code": "CODE_2_DOE"
+        },
+        {
+          "key": "kyc_verified_not_just_approved",
+          "code": "CODE_3_BANK_KYC"
+        },
+        {
+          "key": "name_dob_fathername_consistent",
+          "code": "CODE_1_NAME_DOB"
+        },
+        {
+          "key": "eps_history_continuous",
+          "code": "CODE_4_EPS"
+        },
+        {
+          "key": "old_claim_pending",
+          "code": "CODE_5_OLD_CLAIM"
+        }
+      ],
+      "unsure": [],
+      "passed": []
+    },
+    "rationale": "Every answer in its issue direction sorts entirely into `issues`, each paired with its mapped DiagnosableCode, in the checklist's fixed order (selfCheck.ts's SELF_CHECK_MAPPING)."
+  },
+  {
+    "id": "CK-003",
+    "area": "self-check-bucket",
+    "fn": "bucketSelfCheck",
+    "args": [
+      {
+        "doe_marked": "no",
+        "kyc_verified_not_just_approved": "unsure",
+        "name_dob_fathername_consistent": "yes",
+        "eps_history_continuous": "yes",
+        "old_claim_pending": "no"
+      }
+    ],
+    "expected": {
+      "issues": [
+        {
+          "key": "doe_marked",
+          "code": "CODE_2_DOE"
+        }
+      ],
+      "unsure": [
+        "kyc_verified_not_just_approved"
+      ],
+      "passed": [
+        "name_dob_fathername_consistent",
+        "eps_history_continuous",
+        "old_claim_pending"
+      ]
+    },
+    "rationale": "A genuinely mixed result (1 issue, 1 unsure, 3 pass) — each answer must land in exactly the correct one of the three buckets."
+  },
+  {
+    "id": "CK-004",
+    "area": "self-check-bucket",
+    "fn": "bucketSelfCheck",
+    "args": [
+      {
+        "doe_marked": "yes",
+        "kyc_verified_not_just_approved": "yes",
+        "name_dob_fathername_consistent": "yes",
+        "eps_history_continuous": "yes",
+        "old_claim_pending": "yes"
+      }
+    ],
+    "expected": {
+      "issues": [
+        {
+          "key": "old_claim_pending",
+          "code": "CODE_5_OLD_CLAIM"
+        }
+      ],
+      "passed": [
+        "doe_marked",
+        "kyc_verified_not_just_approved",
+        "name_dob_fathername_consistent",
+        "eps_history_continuous"
+      ]
+    },
+    "rationale": "Isolated polarity-flip check: every OTHER item answered 'yes' passes (their pass direction), while old_claim_pending='yes' is the one issue (its issue direction is flipped) — proves the flip is scoped to exactly one mapping entry, not a global answer-value rule."
+  },
+  {
+    "id": "CK-005",
+    "area": "self-check-bucket",
+    "fn": "bucketSelfCheck",
+    "args": [
+      {
+        "doe_marked": "no",
+        "kyc_verified_not_just_approved": "no",
+        "name_dob_fathername_consistent": "no",
+        "eps_history_continuous": "no",
+        "old_claim_pending": "no"
+      }
+    ],
+    "expected": {
+      "issues": [
+        {
+          "key": "doe_marked",
+          "code": "CODE_2_DOE"
+        },
+        {
+          "key": "kyc_verified_not_just_approved",
+          "code": "CODE_3_BANK_KYC"
+        },
+        {
+          "key": "name_dob_fathername_consistent",
+          "code": "CODE_1_NAME_DOB"
+        },
+        {
+          "key": "eps_history_continuous",
+          "code": "CODE_4_EPS"
+        }
+      ],
+      "passed": [
+        "old_claim_pending"
+      ]
+    },
+    "rationale": "The mirror-image polarity check: every answer is literally 'no', but only old_claim_pending='no' is a PASS (its pass direction) while the other four 'no' answers are all issues — this pair (CK-004/CK-005) makes the polarity flip's correctness unambiguous regardless of which literal answer value is used."
+  }
+]

@@ -99,6 +99,14 @@ export interface PostRejectionInput {
   kyc_complete_at_filing: boolean;
   /** Defaults to the server's current date if omitted. */
   today_date?: ISODate;
+  /** The date EPFO actually rejected the claim / sent the rejection notice, if the citizen
+   * knows it. When present, the deadline/penalty check (H11) is evaluated as of this date —
+   * a rejection IS EPFO's act of "settling" the claim, so this is the date that actually
+   * determines whether EPFO met its own SLA. When omitted, the check falls back to
+   * `today_date` as an approximation (see deadline.ts's `basis` field) — "today" is only a
+   * proxy for the real decision date and can make an on-time rejection look late, or vice
+   * versa, if the citizen checks well after the fact. */
+  rejection_date?: ISODate;
   /** Required if CODE_1_NAME_DOB is selected. */
   namedob_kyc_page_status?: NameDobKycPageStatus;
   /** Required if CODE_3_BANK_KYC is selected. */

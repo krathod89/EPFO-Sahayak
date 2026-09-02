@@ -28,6 +28,7 @@ import type {
   EligibilityIssueType,
   WithdrawalIntent,
   DiagnosisEntry,
+  DiagnosableCode,
   DeadlineResult,
   GrievanceOutput,
   PostRejectionInput,
@@ -82,6 +83,10 @@ interface WizardState {
   selfCheckAnswers: SelfCheckAnswersState;
   filingDate: string | null;
   kycCompleteAtFiling: boolean | null;
+  /** The date EPFO actually rejected the claim, if the citizen knows it — optional, since
+   * many citizens only know the reason, not the exact date. Drives whether the deadline card
+   * gives a definitive answer or an as-of-today estimate (see deadline.ts's DeadlineBasis). */
+  rejectionDate: string | null;
   uan: string;
   claimId: string;
 }
@@ -107,6 +112,7 @@ const init: WizardState = {
   selfCheckAnswers: { ...emptySelfCheck },
   filingDate: null,
   kycCompleteAtFiling: null,
+  rejectionDate: null,
   uan: "",
   claimId: "",
 };
@@ -810,21 +816,56 @@ function sourcesFor(entry: DiagnosisEntry): SourceLink[] | undefined {
   }
 }
 
-function DeadlineCard({ deadline, filingDate, kycComplete }: { deadline: DeadlineResult; filingDate: string; kycComplete: boolean }) {
+/** This card only ever runs post-rejection (Wizard.tsx never reaches it from the pre-filing
+ * path), so EPFO has already settled the claim one way or another by the time this renders —
+ * a rejection IS a settlement. `deadline.basis` says whether that's a confirmed fact (the
+ * citizen gave a rejection date) or an as-of-today estimate (they didn't, so "today" stands
+ * in for the real decision date). The two must read differently: "EPFO still has 2 days
+ * left" is only true while a claim is genuinely open, and asserting it here — after a
+ * decision already happened — is misleading regardless of which way the math comes out. */
+function DeadlineCard({
+  deadline,
+  filingDate,
+  kycComplete,
+  rejectionDate,
+}: {
+  deadline: DeadlineResult;
+  filingDate: string;
+  kycComplete: boolean;
+  rejectionDate: string | null;
+}) {
   const missed = deadline.status === "MISSED";
+  const confirmed = deadline.basis === "rejection_date";
+  const kycClause = `Because your KYC was ${kycComplete ? "complete" : "not complete"} when you filed, EPFO had to settle within ${deadline.deadlineDays} days, by ${fmtIsoDate(deadline.deadlineDate)}.`;
+
+  let heading: string;
+  let body: string;
+  if (confirmed) {
+    heading = missed ? "EPFO missed its own deadline" : "EPFO settled within its deadline";
+    body = missed
+      ? `You filed on ${fmtIsoDate(filingDate)} and EPFO rejected your claim on ${fmtIsoDate(rejectionDate!)}. ${kycClause} EPFO missed this deadline by ${deadline.daysLate} day(s) before rejecting.`
+      : `You filed on ${fmtIsoDate(filingDate)} and EPFO rejected your claim on ${fmtIsoDate(rejectionDate!)}. ${kycClause} That's within the deadline.`;
+  } else {
+    // No rejection date on record — "today" is only a stand-in for when EPFO actually
+    // decided, so this must read as an estimate, not a claim about EPFO's actual timing.
+    heading = missed ? "EPFO's deadline has likely passed" : "EPFO's deadline hasn't passed yet, as of today";
+    // Both branches below deliberately use the same neutral "if EPFO rejected you
+    // before/after the deadline, they met/missed it" conditional — MT-03 (2026-09-02 QA
+    // audit) caught the NOT_YET_DUE branch stating the good outcome as "still possible"
+    // with no equally-true counterweight, a one-directional lean this doc comment's own
+    // "we don't know if EPFO already missed it" standard rules out.
+    body = missed
+      ? `You filed your claim on ${fmtIsoDate(filingDate)}. ${kycClause} That deadline passed ${deadline.daysLate} day(s) ago. We don't know your exact rejection date, so this is based on today — if EPFO rejected you after ${fmtIsoDate(deadline.deadlineDate)}, they missed their own deadline.`
+      : `You filed your claim on ${fmtIsoDate(filingDate)}. ${kycClause} As of today, that deadline hasn't passed yet — but we don't know if EPFO already missed it, since this isn't based on your actual rejection date. If EPFO rejected you on or before ${fmtIsoDate(deadline.deadlineDate)}, they met it.`;
+  }
+
   return (
     <div className={cn("rounded-2xl border-2 px-5 py-4", missed ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50")}>
       <div className="flex items-center gap-2 mb-3">
         {missed ? <AlertTriangle className="size-5 text-red-500 shrink-0" /> : <Clock className="size-5 text-green-600 shrink-0" />}
-        <h3 className={cn("font-semibold text-sm", missed ? "text-red-800" : "text-green-800")}>
-          {missed ? "EPFO missed its own deadline" : "EPFO is still within its deadline"}
-        </h3>
+        <h3 className={cn("font-semibold text-sm", missed ? "text-red-800" : "text-green-800")}>{heading}</h3>
       </div>
-      <p className={cn("text-sm leading-relaxed", missed ? "text-red-700" : "text-green-700")}>
-        {missed
-          ? `You filed your claim on ${fmtIsoDate(filingDate)}. Because your KYC was ${kycComplete ? "complete" : "not complete"} when you filed, EPFO had to settle within ${deadline.deadlineDays} days, by ${fmtIsoDate(deadline.deadlineDate)}. EPFO has missed this deadline by ${deadline.daysLate} day(s).`
-          : `You filed your claim on ${fmtIsoDate(filingDate)}. EPFO must settle within ${deadline.deadlineDays} days, by ${fmtIsoDate(deadline.deadlineDate)}. EPFO still has ${deadline.daysRemaining} day(s) left.`}
-      </p>
+      <p className={cn("text-sm leading-relaxed", missed ? "text-red-700" : "text-green-700")}>{body}</p>
       {missed && (
         <div className="mt-3 rounded-xl bg-red-100 border border-red-200 px-3.5 py-3 text-xs text-red-800 leading-relaxed font-medium">
           You may be owed 12% penalty interest on your claim amount for this delay. Ask for this by name when you file your grievance.
@@ -893,6 +934,78 @@ function CopyBlock({ text, onCopy }: { text: string; onCopy?: () => void }) {
         {text}
       </pre>
     </motion.div>
+  );
+}
+
+// ─── Grievance block (ticket 19) ────────────────────────────────────────────
+
+type ReadyGrievance = Extract<GrievanceOutput, { ready: true }>;
+
+/** One ready-to-file grievance's subject/body/where-to-file — extracted so the
+ * grievanceOutput screen can render more than one of these (ticket 19: a multi-code
+ * selection can produce several independently applicable grievances, not just one). `label`
+ * is shown as a small heading above the subject line when set — used to distinguish multiple
+ * cards ("File this first" / "Then file this too: {code name}"); omitted entirely for the
+ * common single-grievance case, so that UI is unchanged from before this ticket. */
+function GrievanceBlock({
+  label,
+  grievance,
+  sessionId,
+}: {
+  label?: string;
+  grievance: ReadyGrievance;
+  sessionId: string;
+}) {
+  return (
+    <div className="space-y-4">
+      {label && <p className="text-sm font-semibold text-warm-800">{label}</p>}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Subject line</p>
+        <CopyBlock text={grievance.subject} onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant })} />
+      </div>
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Grievance body</p>
+        <CopyBlock text={grievance.body} onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant })} />
+      </div>
+      <div className="rounded-xl bg-accent-50 border border-accent-100 px-4 py-3.5 space-y-2">
+        <p className="text-xs font-semibold text-accent-700">Where to file</p>
+        <p className="text-xs text-accent-600 leading-relaxed">
+          Go to <strong>EPFiGMS</strong> (epfigms.gov.in). Select your establishment, then look for a category close to{" "}
+          <strong>&ldquo;{grievance.suggestedCategory}&rdquo;</strong>. Paste the subject line above into the form&apos;s
+          subject field, and the grievance body into its description box.
+        </p>
+        <p className="text-xs text-accent-600/80 leading-relaxed italic">{SUGGESTED_CATEGORY_CAVEAT}</p>
+        <a
+          href="https://epfigms.gov.in"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent-600 hover:text-accent-700 transition-colors"
+        >
+          Open EPFiGMS <ExternalLink className="size-3" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/** Print-only counterpart to GrievanceBlock — plain black-on-white, no app chrome, since the
+ * "Save as PDF" document has to work as a standalone artifact. */
+function PrintGrievanceBlock({ heading, grievance }: { heading: string; grievance: ReadyGrievance }) {
+  return (
+    <div className="mt-6 pt-4 border-t border-gray-300 first:mt-4 first:pt-0 first:border-t-0">
+      <p className="text-sm font-bold">{heading}</p>
+      <p className="text-xs text-gray-600 mt-1">
+        Suggested EPFiGMS category: {grievance.suggestedCategory}
+      </p>
+      <div className="mt-3">
+        <p className="text-xs font-bold uppercase tracking-wide">Subject line</p>
+        <p className="text-sm mt-1">{grievance.subject}</p>
+      </div>
+      <div className="mt-3">
+        <p className="text-xs font-bold uppercase tracking-wide">Grievance body</p>
+        <p className="text-sm mt-1 whitespace-pre-wrap">{grievance.body}</p>
+      </div>
+    </div>
   );
 }
 
@@ -1057,6 +1170,7 @@ export default function Wizard() {
       rejection_codes_selected: s.selectedCodes,
       filing_date: s.filingDate!,
       kyc_complete_at_filing: s.kycCompleteAtFiling!,
+      rejection_date: s.rejectionDate ?? undefined,
       namedob_kyc_page_status: s.selectedCodes.includes("CODE_1_NAME_DOB") ? s.namedobKycPageStatus ?? undefined : undefined,
       bank_account_type: s.selectedCodes.includes("CODE_3_BANK_KYC") ? s.bankAccountType ?? undefined : undefined,
       // No submission date needed for a joint account — a hard rejection independent of timing.
@@ -1085,7 +1199,7 @@ export default function Wizard() {
     if (s.screen !== "diagnosisSummary" && s.screen !== "grievanceOutput") return;
     if (!s.filingDate || s.kycCompleteAtFiling === null) return;
 
-    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.eligibilityIssueType, s.withdrawalIntent, s.selfCheckAnswers]);
+    const key = JSON.stringify([s.uan, s.claimId, s.selectedCodes, s.filingDate, s.kycCompleteAtFiling, s.rejectionDate, s.namedobKycPageStatus, s.bankAccountType, s.bankKycSubmissionDate, s.eligibilityIssueType, s.withdrawalIntent, s.selfCheckAnswers]);
     if (key === lastPostRejectionKeyRef.current) return; // nothing this fetch depends on actually changed
 
     const myRequestId = ++postRejectionRequestIdRef.current;
@@ -1762,6 +1876,13 @@ export default function Wizard() {
     // see index.ts), so they'd otherwise repeat the exact bug shape already fixed on the
     // filingDate and diagnosisSummary screens.
     const suppressesDeadline = s.selectedCodes.some((c) => DEADLINE_SUPPRESSED_CODES.includes(c));
+    // Reused for the deadline check itself (H11) — a rejection date before the filing date
+    // is impossible and would silently corrupt that math, so it's caught here the same way
+    // filingDate/bankKycSubmissionDate validate their own dates.
+    let rejectionDateError = dateInputError(s.rejectionDate);
+    if (!rejectionDateError && s.rejectionDate && s.filingDate && s.rejectionDate < s.filingDate) {
+      rejectionDateError = "This is before your filing date. Please check it.";
+    }
     content = (
       <Shell step={3} totalSteps={5} onBack={back} label="Filing date">
         <div className="space-y-5">
@@ -1788,7 +1909,38 @@ export default function Wizard() {
             />
           </div>
 
-          <PrimaryBtn full disabled={s.kycCompleteAtFiling === null} onClick={advance}>
+          {!suppressesDeadline && (
+            <div>
+              <label htmlFor="rejection-date" className="block text-sm font-medium text-warm-700 mb-2">
+                When did EPFO reject your claim? <span className="font-normal text-warm-500">(optional)</span>
+              </label>
+              <p className="text-xs text-warm-600 mb-2 leading-relaxed">
+                A rejection is EPFO settling your claim — so this date, not today's, is what actually tells us whether they met
+                their own deadline. Leave this blank if you don't know it; we'll estimate using today's date instead.
+              </p>
+              <input
+                id="rejection-date"
+                type="date"
+                value={s.rejectionDate ?? ""}
+                min={s.filingDate ?? undefined}
+                max={new Date().toISOString().split("T")[0]}
+                onChange={(e) => setS({ ...s, rejectionDate: e.target.value || null })}
+                aria-invalid={!!rejectionDateError}
+                aria-describedby={rejectionDateError ? "rejection-date-error" : undefined}
+                className={cn(
+                  "w-full rounded-xl border-2 bg-white px-4 py-3 text-sm text-warm-900 focus:outline-none transition-colors",
+                  rejectionDateError ? "border-red-300 focus:border-red-500" : "border-warm-200 focus:border-accent-500"
+                )}
+              />
+              {rejectionDateError && (
+                <p id="rejection-date-error" className="text-xs text-red-600 mt-1.5">
+                  {rejectionDateError}
+                </p>
+              )}
+            </div>
+          )}
+
+          <PrimaryBtn full disabled={s.kycCompleteAtFiling === null || !!rejectionDateError} onClick={advance}>
             See my diagnosis <ArrowRight className="size-4" />
           </PrimaryBtn>
         </div>
@@ -1931,7 +2083,12 @@ export default function Wizard() {
 
               {postRejectionResult.deadline && s.filingDate && s.kycCompleteAtFiling !== null && (
                 <>
-                  <DeadlineCard deadline={postRejectionResult.deadline} filingDate={s.filingDate} kycComplete={s.kycCompleteAtFiling} />
+                  <DeadlineCard
+                    deadline={postRejectionResult.deadline}
+                    filingDate={s.filingDate}
+                    kycComplete={s.kycCompleteAtFiling}
+                    rejectionDate={s.rejectionDate}
+                  />
                   <p className="text-xs text-warm-600 leading-relaxed">
                     Note: The 3-day and 20-day deadlines are treated as calendar days in this tool, as commonly described. EPFO
                     has not formally published whether they are calendar or working days.
@@ -1967,6 +2124,13 @@ export default function Wizard() {
     // postRejectionResult exists, independent of whether UAN/Claim ID are filled in, so the
     // header and the fields card below must not promise "grievance text" for these cases.
     const grievanceNeverApplicable = !!grievance && !grievance.ready && grievance.reason === "not_applicable";
+    // Ticket 19: every OTHER selected code that's ALSO independently applicable, beyond the
+    // primary — only the ready ones render as their own card (a missing_info secondary shares
+    // the same uan/claimId fields collected once above, so it becomes ready on the same
+    // fetch the primary does, with nothing extra to show meanwhile).
+    const readyAdditional = (postRejectionResult?.additionalGrievances ?? []).filter(
+      (a): a is { code: DiagnosableCode; grievance: ReadyGrievance } => a.grievance.ready
+    );
 
     content = (
       <Shell step={5} totalSteps={5} onBack={back} label="Grievance">
@@ -2043,31 +2207,21 @@ export default function Wizard() {
             </div>
           ) : grievance && grievance.ready ? (
             <>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Subject line</p>
-                <CopyBlock text={grievance.subject} onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant })} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Grievance body</p>
-                <CopyBlock text={grievance.body} onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant })} />
-              </div>
-              <div className="rounded-xl bg-accent-50 border border-accent-100 px-4 py-3.5 space-y-2">
-                <p className="text-xs font-semibold text-accent-700">Where to file</p>
-                <p className="text-xs text-accent-600 leading-relaxed">
-                  Go to <strong>EPFiGMS</strong> (epfigms.gov.in). Select your establishment, then look for a category close to{" "}
-                  <strong>&ldquo;{grievance.suggestedCategory}&rdquo;</strong>. Paste the subject line above into the form&apos;s
-                  subject field, and the grievance body into its description box.
-                </p>
-                <p className="text-xs text-accent-600/80 leading-relaxed italic">{SUGGESTED_CATEGORY_CAVEAT}</p>
-                <a
-                  href="https://epfigms.gov.in"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent-600 hover:text-accent-700 transition-colors"
-                >
-                  Open EPFiGMS <ExternalLink className="size-3" />
-                </a>
-              </div>
+              {readyAdditional.length > 0 && (
+                <div className="rounded-xl bg-warm-100 border border-warm-200 px-3.5 py-3 flex gap-2.5 text-xs text-warm-600 leading-relaxed">
+                  <Info className="size-4 shrink-0 mt-0.5 text-warm-400" />
+                  <span>
+                    You have {readyAdditional.length + 1} separate issues, each worth its own grievance. EPFiGMS only allows one
+                    issue per ticket, so file these one at a time, in the order below — starting with the one below marked
+                    &ldquo;file this first&rdquo;.
+                  </span>
+                </div>
+              )}
+
+              <GrievanceBlock label={readyAdditional.length > 0 ? "File this first" : undefined} grievance={grievance} sessionId={sessionId} />
+              {readyAdditional.map(({ code, grievance: g }) => (
+                <GrievanceBlock key={code} label={`Then file this too: ${CODE_DEFINITIONS[code].name}`} grievance={g} sessionId={sessionId} />
+              ))}
 
               <button
                 onClick={() => window.print()}
@@ -2084,7 +2238,9 @@ export default function Wizard() {
               {/* Screen-hidden, print-only (see .print-grievance in globals.css) — a clean,
                   self-contained page for the "Save as PDF" button above. Deliberately plain
                   (black on white, no app chrome) since it has to work as a standalone document,
-                  not a screenshot of the UI. */}
+                  not a screenshot of the UI. Ticket 19: includes every applicable grievance,
+                  not just the primary — the PDF is the offline copy, so it can't drop what the
+                  screen now shows. */}
               <div className="hidden print:block print-grievance text-black">
                 <h1 className="text-xl font-bold">EPFO Sahayak — Grievance Draft</h1>
                 <p className="text-xs text-gray-600 mt-1">Generated {new Date().toLocaleDateString()} · Not affiliated with EPFO or the Government of India</p>
@@ -2095,20 +2251,19 @@ export default function Wizard() {
                   <p>
                     <strong>Claim ID:</strong> {s.claimId || "—"}
                   </p>
-                  <p>
-                    <strong>Suggested EPFiGMS category:</strong> {grievance.suggestedCategory}
+                </div>
+                {readyAdditional.length > 0 && (
+                  <p className="text-xs text-gray-600 mt-3">
+                    {readyAdditional.length + 1} separate issues below — EPFiGMS only allows one issue per ticket, so file each
+                    as its own grievance, in the order given.
                   </p>
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs font-bold uppercase tracking-wide">Subject line</p>
-                  <p className="text-sm mt-1">{grievance.subject}</p>
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs font-bold uppercase tracking-wide">Grievance body</p>
-                  <p className="text-sm mt-1 whitespace-pre-wrap">{grievance.body}</p>
-                </div>
+                )}
+                <PrintGrievanceBlock heading={readyAdditional.length > 0 ? "Grievance 1: file this first" : "Grievance"} grievance={grievance} />
+                {readyAdditional.map(({ code, grievance: g }, i) => (
+                  <PrintGrievanceBlock key={code} heading={`Grievance ${i + 2}: then file this too — ${CODE_DEFINITIONS[code].name}`} grievance={g} />
+                ))}
                 <p className="text-xs text-gray-600 mt-4">
-                  File this at epfigms.gov.in. Paste the subject line into the form&apos;s subject field, and the
+                  File each grievance at epfigms.gov.in. Paste its subject line into the form&apos;s subject field, and its
                   grievance body into its description box.
                 </p>
               </div>

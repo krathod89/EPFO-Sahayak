@@ -56,12 +56,18 @@ export async function POST(request: Request) {
       trackServerEvent(sessionId, "deadline_check_shown", {
         status: result.deadline.status,
         deadline_days: result.deadline.deadlineDays,
+        // "rejection_date" (citizen gave EPFO's actual rejection date) vs "today" (no
+        // rejection date given, estimated off today's date) — see deadline.ts's DeadlineBasis.
+        basis: result.deadline.basis,
       });
     }
     if (result.grievance?.ready) {
       trackServerEvent(sessionId, "grievance_generated", {
         variant: result.grievance.variant,
         deadline_cited: result.grievance.deadlineCited,
+        // Ticket 19: how many OTHER applicable grievances this selection produced beyond the
+        // primary one — signal for how often the multi-grievance case actually happens.
+        additional_grievance_count: result.additionalGrievances.length,
       });
     }
 
