@@ -208,7 +208,15 @@ export const CODE_3_BRANCHES = {
  * genuine, correct eligibility rule (PRD §4's core thesis doesn't apply here, and the ticket's
  * own framing note says so explicitly). The two known thresholds have opposite remedies (wait,
  * vs. switch claim type entirely), so `unsure` gets its own honest branch rather than
- * defaulting to either — guessing wrong here would send the citizen down the wrong fix. */
+ * defaulting to either — guessing wrong here would send the citizen down the wrong fix.
+ *
+ * `over_nine_half_years`'s fix now names the UAN Member e-Sewa portal (source-link audit,
+ * 2026-09-02): confirmed via multiple convergent secondary sources (sahi.com, Bajaj Broking,
+ * uanmembers.in) that Form 10D is filed online from that same portal's "Online Services" menu,
+ * the identical portal already cited elsewhere in this file for Forms 19/10C/31. A direct fetch
+ * of the portal itself timed out (slow government server, not a dead link — see Wizard.tsx's
+ * `sourcesFor()` comment) so this stays secondary-sourced, same discipline as Code 3's wait-band
+ * citation below. */
 export const CODE_8_BRANCHES = {
   under_six_months: {
     explanation:
@@ -218,7 +226,7 @@ export const CODE_8_BRANCHES = {
   over_nine_half_years: {
     explanation:
       "Once your service crosses 9.5 years, EPFO no longer allows a lump-sum Form 10C withdrawal of your pension balance. Past this point, you are eligible for a monthly pension instead of a one-time payout. This is a genuine eligibility rule, not a records mismatch.",
-    fix: "File Form 10D to claim your monthly pension benefit instead of Form 10C. Refiling Form 10C will keep getting rejected past this service length, regardless of anything else on your claim.",
+    fix: "File Form 10D on the UAN Member e-Sewa portal (Online Services > Form 10D) to claim your monthly pension benefit instead of Form 10C. Refiling Form 10C will keep getting rejected past this service length, regardless of anything else on your claim.",
   },
   unsure: {
     explanation:
@@ -230,22 +238,27 @@ export const CODE_8_BRANCHES = {
 /** Code 9's four branches (ticket 17, ~2026-09-01) — same treatment as Code 8: never framed
  * as "not your fault" (this is a filing-choice case, not a records mismatch), and `unsure`
  * gets its own honest branch rather than guessing, since many citizens don't clearly
- * distinguish "my PF" from "my EPS/pension" and a wrong guess here recommends the wrong form. */
+ * distinguish "my PF" from "my EPS/pension" and a wrong guess here recommends the wrong form.
+ *
+ * All three specific branches' fixes now name the UAN Member e-Sewa portal (source-link audit,
+ * 2026-09-02) — the same portal Forms 19, 10C, and 31 are all filed from, already cited for the
+ * `unsure` branch below; naming it consistently across all four branches closed the one gap
+ * that discipline had left. */
 export const CODE_9_BRANCHES = {
   full_settlement: {
     explanation:
       "You're trying to withdraw your full PF balance after leaving your job. That calls for Form 19, not Form 10C or Form 31. This is a form-selection issue, not a records mismatch.",
-    fix: "Refile using Form 19. If Form 19 is also rejected, check the specific remark it gives: that may point to a different, unrelated issue (a records mismatch or eligibility rule) rather than this one.",
+    fix: "Refile using Form 19 on the UAN Member e-Sewa portal. If Form 19 is also rejected, check the specific remark it gives: that may point to a different, unrelated issue (a records mismatch or eligibility rule) rather than this one.",
   },
   pension_only: {
     explanation:
       "You're trying to withdraw only your pension (EPS) balance, not your full PF. That calls for Form 10C, not Form 19 or Form 31. Note: Form 10C has its own eligibility conditions, at least 6 months of service, and a different process past 9.5 years of service.",
-    fix: "Refile using Form 10C. If Form 10C is then rejected for a service-length reason, that's a separate eligibility issue, not a wrong-form one. Check the specific remark it gives.",
+    fix: "Refile using Form 10C on the UAN Member e-Sewa portal. If Form 10C is then rejected for a service-length reason, that's a separate eligibility issue, not a wrong-form one. Check the specific remark it gives.",
   },
   advance: {
     explanation:
       "You're trying to withdraw an advance while still employed (for example, for medical, housing, or education expenses). That calls for Form 31, not Form 19 or Form 10C.",
-    fix: "Refile using Form 31, selecting the reason that matches your actual purpose (medical, housing, education, etc.). Different reasons have different supporting-document requirements.",
+    fix: "Refile using Form 31 on the UAN Member e-Sewa portal, selecting the reason that matches your actual purpose (medical, housing, education, etc.). Different reasons have different supporting-document requirements.",
   },
   unsure: {
     explanation:

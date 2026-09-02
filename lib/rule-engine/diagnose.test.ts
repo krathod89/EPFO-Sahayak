@@ -168,6 +168,23 @@ describe("diagnose — Code 7 self-check sub-flow", () => {
     expect(result.selfCheck!.issueEntries[0]!.meta).toBeUndefined(); // no band info in self-check context
   });
 
+  it("tags a self-check-routed Code 1 issue with the standard_mismatch branch (so its source link matches its fix text, not the portal-sync-bug branch's)", () => {
+    const result = diagnose({
+      codes: ["CODE_7_NO_REASON"],
+      today_date: "2026-08-29",
+      self_check_answers: {
+        doe_marked: "yes",
+        kyc_verified_not_just_approved: "yes",
+        name_dob_fathername_consistent: "no",
+        eps_history_continuous: "yes",
+        old_claim_pending: "no",
+      },
+    });
+    expect(result.selfCheck!.issueEntries).toHaveLength(1);
+    expect(result.selfCheck!.issueEntries[0]!.code).toBe("CODE_1_NAME_DOB");
+    expect(result.selfCheck!.issueEntries[0]!.meta).toMatchObject({ branch: "standard_mismatch" });
+  });
+
   it("does not treat an unsure answer as clean", () => {
     const result = diagnose({
       codes: ["CODE_7_NO_REASON"],

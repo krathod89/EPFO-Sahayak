@@ -134,7 +134,11 @@ function resolveSimpleCode(code: RuleCode): DiagnosisEntry {
 export function resolveSelfCheckIssueCode(code: RuleCode): DiagnosisEntry {
   if (code === "CODE_1_NAME_DOB") {
     // No claim screen exists yet in a self-check context, so only the standard branch applies.
-    return { code, ...CODE_1_BRANCHES.standard_mismatch };
+    // `meta` is set (unlike Code 3 just below) so `sourcesFor()` in Wizard.tsx can tell this
+    // apart from the portal-sync-bug branch — without it, `hasBranch()` silently fails and the
+    // citation shown was EPFiGMS (a grievance-portal link) under fix text that never mentions
+    // filing a grievance at all. Found during a full source-link coverage audit, 2026-09-02.
+    return { code, ...CODE_1_BRANCHES.standard_mismatch, meta: { branch: "standard_mismatch" } };
   }
   if (code === "CODE_3_BANK_KYC") {
     return { code, ...CODE_3_GENERAL };
