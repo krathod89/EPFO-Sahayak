@@ -2,10 +2,14 @@ import { describe, it, expect } from "vitest";
 import { buildGrievance } from "./grievance";
 import type { DeadlineResult } from "./deadline";
 
+// basis: "rejection_date" — the citizen gave EPFO's actual rejection date, so the citation
+// can assert a miss as a confirmed fact. See the "basis" describe block below for the
+// basis: "today" (no rejection date known) wording, which must hedge instead of assert.
 const MISSED: DeadlineResult = {
   status: "MISSED",
   deadlineDays: 3,
   deadlineDate: "2026-08-04",
+  basis: "rejection_date",
   daysLate: 5,
 };
 
@@ -13,8 +17,11 @@ const NOT_YET_DUE: DeadlineResult = {
   status: "NOT_YET_DUE",
   deadlineDays: 3,
   deadlineDate: "2026-08-04",
+  basis: "rejection_date",
   daysRemaining: 2,
 };
+
+const MISSED_TODAY_BASIS: DeadlineResult = { ...MISSED, basis: "today" };
 
 const base = {
   uan: "UAN123456789",
@@ -139,6 +146,41 @@ describe("buildGrievance — Variant A (standard)", () => {
       expect(result.deadlineCited).toBe(false);
       expect(result.body).not.toMatch(/12% penal interest/);
     }
+  });
+
+  // H11 fix (2026-09-02): the citation must not assert a missed deadline as settled fact
+  // when it's only inferred from today's date — that text goes straight into an official
+  // EPFiGMS filing, so an unconfirmed claim there is a real credibility risk for the citizen,
+  // not just a UI nicety. basis: "rejection_date" (the MISSED constant above) keeps the
+  // confident wording; basis: "today" must hedge.
+  describe("basis: rejection_date vs today", () => {
+    it("asserts the miss as fact when basis is rejection_date", () => {
+      const result = buildGrievance({
+        ...base,
+        deadline: MISSED,
+        kind: { type: "standard", code: "CODE_2_DOE", codeName: "Date of Exit not marked", issueSentence: "x" },
+      });
+      expect(result.ready).toBe(true);
+      if (result.ready) {
+        expect(result.body).toMatch(/rejected after this deadline, missed by 5 day/);
+        expect(result.body).not.toMatch(/if my rejection was issued after/i);
+      }
+    });
+
+    it("hedges the claim, asking EPFO to confirm, when basis is today", () => {
+      const result = buildGrievance({
+        ...base,
+        deadline: MISSED_TODAY_BASIS,
+        kind: { type: "standard", code: "CODE_2_DOE", codeName: "Date of Exit not marked", issueSentence: "x" },
+      });
+      expect(result.ready).toBe(true);
+      if (result.ready) {
+        expect(result.deadlineCited).toBe(true);
+        expect(result.body).toMatch(/12% penal interest/);
+        expect(result.body).toMatch(/if my rejection was issued after/i);
+        expect(result.body).not.toMatch(/rejected after this deadline, missed by/);
+      }
+    });
   });
 });
 

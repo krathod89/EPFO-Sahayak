@@ -295,9 +295,11 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 **Deadline citation block** (appended to any variant below, when applicable):
 > "I also note that EPFO's own rule requires settlement within {3 / 20} days of filing (filed {filing_date}). This deadline was missed by {days_late} day(s). Under EPFO's delay-penalty rule, I am entitled to 12% penal interest on my claim amount for this delay. I request this penalty be applied."
 
+**2026-09-02 addendum:** the quote above is the `basis: "rejection_date"` wording only — it now assumes a confirmed rejection date (the citizen's own `rejection_date` input). When that date isn't known, `deadlineCitation()` (`lib/rule-engine/grievance.ts`) sends a second, hedged variant instead of asserting the miss as fact, since the citation text goes into an actual EPFiGMS filing. See that function directly for the current wording of both variants, rather than duplicating it here to drift again.
+
 ### Variant A — standard rejection (Codes 1, 2, 4, 5)
 
-> Subject: Grievance regarding rejection of PF claim — {CODE_NAME}
+> Subject: Grievance regarding rejection of PF claim: {CODE_NAME}
 >
 > My PF withdrawal claim (Claim ID: {CLAIM_ID}, UAN: {UAN}) was rejected. The stated reason was: {CODE_NAME}. [One-sentence restatement of the issue, drawn from that code's explanation text in Section 3.] I request EPFO to review and resettle my claim.
 >
@@ -307,7 +309,7 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 
 **Re-anchored 2026-08-31 (ticket 13):** no longer references employer approval — see Section 3's Code 3 note.
 
-> Subject: Grievance regarding unverified bank KYC — Claim ID {CLAIM_ID}
+> Subject: Grievance regarding unverified bank KYC (Claim ID {CLAIM_ID})
 >
 > My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}) is blocked because my bank KYC is not verified. I submitted my bank KYC on {bank_kyc_submission_date}. This has taken longer than the typical bank/NPCI verification turnaround. I request EPFO to check the status of my bank KYC verification directly and resettle my claim.
 >
@@ -327,7 +329,7 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 
 ### Variant C — portal sync bug (Code 1, `namedob_kyc_page_status = approved_and_verified`)
 
-> Subject: Grievance — claim screen shows outdated mismatch, KYC page already Approved and Verified — Claim ID {CLAIM_ID}
+> Subject: Grievance: claim screen shows outdated mismatch, KYC page already Approved and Verified (Claim ID {CLAIM_ID})
 >
 > My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}) was rejected for a name/DOB/father's-name mismatch. My KYC page already shows this detail as Approved and Verified (screenshot attached). My claim status page still shows this as an error (screenshot attached). This appears to be a synchronization issue between EPFO's KYC and claim-processing systems, not an actual mismatch in my records. I request EPFO to correct this synchronization issue and reprocess my claim without requiring a new Joint Declaration.
 >
@@ -335,7 +337,7 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 
 ### Variant D — approved but not credited (Code 6)
 
-> Subject: Grievance — PF claim approved but payment not received — Claim ID {CLAIM_ID}
+> Subject: Grievance: PF claim approved but payment not received (Claim ID {CLAIM_ID})
 >
 > My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}) was approved. The payment has not reached my bank account as of {TODAY_DATE}. I have checked my bank statement and found no matching transfer. I request EPFO to trace this payment and confirm its status, or reissue it if it failed.
 >
@@ -343,9 +345,9 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 
 ### Variant E — "demand the real reason" (Code 7, all self-checks clean)
 
-> Subject: Grievance — PF claim rejected with no reason given — Claim ID {CLAIM_ID}
+> Subject: Grievance: PF claim rejected with no reason given (Claim ID {CLAIM_ID})
 >
-> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}), filed on {filing_date}, was rejected. EPFO's claim status did not state a reason. I have checked my own records for the common causes of rejection — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to state the specific reason my claim was rejected, and to reprocess my claim once I have that information.
+> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}), filed on {filing_date}, was rejected. EPFO's claim status did not state a reason. I have checked my own records for the common causes of rejection (Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim) and found no issue on my end. I request EPFO to state the specific reason my claim was rejected, and to reprocess my claim once I have that information.
 >
 > {DEADLINE_CITATION, if applicable}
 
@@ -353,9 +355,9 @@ Runs after diagnosis (and priority ranking, if applicable) and the deadline chec
 
 Deliberately does NOT reuse Variant E's "EPFO's claim status did not state a reason" line — that's factually false for Code 10, where EPFO did state a reason, just not one this tool recognizes.
 
-> Subject: Grievance — PF claim rejected, stated reason unclear — Claim ID {CLAIM_ID}
+> Subject: Grievance: PF claim rejected, stated reason unclear (Claim ID {CLAIM_ID})
 >
-> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}), filed on {filing_date}, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes — Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim — and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information.
+> My PF claim (Claim ID: {CLAIM_ID}, UAN: {UAN}), filed on {filing_date}, was rejected. EPFO's claim status gave a reason, but it did not clearly match any of the common, documented causes of rejection. I have checked my own records for the common causes (Date of Exit, KYC verification, name/DOB/father's-name consistency, EPS contribution history, and any pending old claim) and found no issue on my end. I request EPFO to clarify the specific corrective action needed for the stated reason, and to reprocess my claim once I have that information.
 >
 > {DEADLINE_CITATION, if applicable}
 

@@ -25,6 +25,50 @@ describe("runPostRejectionFlow — single code, deadline missed", () => {
   });
 });
 
+// H11 fix (2026-09-02): the deadline check is properly evaluated against EPFO's actual
+// rejection date when the citizen gives one — not against "today," which is only when the
+// citizen happens to be using the tool. `today_date` here is deliberately far past the
+// 3-day deadline (see baseInput) so these cases can tell the two apart: if the check were
+// still using today_date, an on-time rejection_date would be reported as MISSED anyway.
+describe("runPostRejectionFlow — deadline basis (rejection_date vs today)", () => {
+  it("uses rejection_date, not today_date, once given — an on-time rejection reports NOT_YET_DUE even though today is well past the deadline", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_2_DOE"],
+      rejection_date: "2026-08-02", // 1 day after filing — inside the 3-day KYC-complete window
+    });
+    expect(result.deadline?.basis).toBe("rejection_date");
+    expect(result.deadline?.status).toBe("NOT_YET_DUE");
+  });
+
+  it("still reports MISSED off rejection_date when the rejection itself came after the deadline", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_2_DOE"],
+      rejection_date: "2026-08-06", // 5 days after filing — past the 3-day window
+    });
+    expect(result.deadline?.basis).toBe("rejection_date");
+    expect(result.deadline?.status).toBe("MISSED");
+    expect(result.deadline?.daysLate).toBe(2);
+  });
+
+  it("falls back to today_date with basis 'today' when rejection_date is omitted", () => {
+    const result = runPostRejectionFlow({ ...baseInput, rejection_codes_selected: ["CODE_2_DOE"] });
+    expect(result.deadline?.basis).toBe("today");
+    expect(result.deadline?.status).toBe("MISSED"); // today_date (Aug 10) is past the Aug 4 deadline
+  });
+
+  it("suppressed codes (8/9) suppress the deadline check regardless of rejection_date", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_8_ELIGIBILITY"],
+      eligibility_issue_type: "under_six_months",
+      rejection_date: "2026-08-02",
+    });
+    expect(result.deadline).toBeUndefined();
+  });
+});
+
 describe("runPostRejectionFlow — two codes, generates grievance for the fix-first code", () => {
   it("picks Bank KYC (Tier 2, ranks above Name/DOB) as the primary grievance subject", () => {
     const result = runPostRejectionFlow({
@@ -38,6 +82,88 @@ describe("runPostRejectionFlow — two codes, generates grievance for the fix-fi
     if (result.grievance?.ready) {
       expect(result.grievance.variant).toBe("B"); // bank KYC escalation, band 3
     }
+    // Name/DOB here is `not_verified` — a standard mismatch, which IS itself an applicable
+    // (ready, Variant A) grievance, not just an unranked/dead code — so it correctly shows
+    // up as a second, separate ticket to file (ticket 19), not silently dropped.
+    expect(result.additionalGrievances).toHaveLength(1);
+    expect(result.additionalGrievances[0]!.code).toBe("CODE_1_NAME_DOB");
+    if (result.additionalGrievances[0]!.grievance.ready) {
+      expect(result.additionalGrievances[0]!.grievance.variant).toBe("A");
+    }
+  });
+});
+
+// Ticket 19 (2026-09-02, found during the full-app QA audit): a multi-code selection used to
+// silently resolve to exactly ONE grievance, dropping whatever any other selected code would
+// have produced on its own. Fixed: every applicable grievance is now returned, fix-first
+// order, with `grievance` staying the primary (backward-compatible) and the rest in
+// `additionalGrievances`.
+describe("runPostRejectionFlow — additionalGrievances (ticket 19)", () => {
+  // Gap A: Tier 1 has no defined order between Code 2 and Code 5 (spec Section 4) — both
+  // independently warrant their own grievance, so both must come back, not just whichever
+  // the citizen happened to select first.
+  it("returns a grievance for BOTH Tier-1 codes when neither has priority over the other (Code 2 + Code 5)", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_2_DOE", "CODE_5_OLD_CLAIM"],
+    });
+    expect(result.priority?.tier1).toEqual(["CODE_2_DOE", "CODE_5_OLD_CLAIM"]);
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) expect(result.grievance.variant).toBe("A");
+    expect(result.additionalGrievances).toHaveLength(1);
+    expect(result.additionalGrievances[0]!.code).toBe("CODE_5_OLD_CLAIM");
+    expect(result.additionalGrievances[0]!.grievance.ready).toBe(true);
+  });
+
+  // Gap B: Bank KYC still within its normal wait band (1 or 2) is not_applicable on its own
+  // ("wait, don't file yet") — but it always outranks Name/DOB in Tier 2, so it used to win
+  // the single "primary" slot and hide a fully valid Name/DOB grievance underneath it. Fixed:
+  // a not_applicable code is skipped when picking the primary, so the citizen now gets the
+  // real, ready grievance instead of nothing.
+  it("promotes a lower-priority code's valid grievance when the higher-priority one is not_applicable (Bank KYC Band 1 + Name/DOB portal-sync-bug)", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_1_NAME_DOB", "CODE_3_BANK_KYC"],
+      namedob_kyc_page_status: "approved_and_verified", // -> portal_sync_bug, Variant C
+      bank_kyc_submission_date: "2026-08-08", // 1 working day before today_date -> Band 1
+    });
+    expect(result.priority?.tier2).toEqual(["CODE_3_BANK_KYC", "CODE_1_NAME_DOB"]);
+    // Bank KYC (the actual Tier-2 winner) is not_applicable — Name/DOB's portal-sync-bug
+    // grievance is promoted to primary instead of the citizen seeing nothing.
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) expect(result.grievance.variant).toBe("C");
+    // Bank KYC's not_applicable result is correctly excluded, not shown as a dead slot.
+    expect(result.additionalGrievances).toEqual([]);
+  });
+
+  // Regression guard: when NOTHING selected has an applicable grievance yet, the old
+  // single-code "wait, don't file yet" UI path must keep working — `grievance` still carries
+  // the not_applicable result (not undefined), since Wizard.tsx's button copy depends on
+  // checking `grievance.reason === "not_applicable"`.
+  it("surfaces not_applicable (not undefined) when the only selected code's own grievance is not_applicable (joint account)", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_3_BANK_KYC"],
+      bank_account_type: "joint",
+    });
+    expect(result.grievance?.ready).toBe(false);
+    if (!result.grievance?.ready) expect(result.grievance?.reason).toBe("not_applicable");
+    expect(result.additionalGrievances).toEqual([]);
+  });
+
+  // Unranked codes (currently only Code 4, EPS) are diagnosable and DO produce their own
+  // standard grievance — they must not be dropped just because prioritize() excludes them
+  // from `ranked`.
+  it("includes an unranked code's grievance in additionalGrievances too (Code 4 alongside a Tier-1 code)", () => {
+    const result = runPostRejectionFlow({
+      ...baseInput,
+      rejection_codes_selected: ["CODE_2_DOE", "CODE_4_EPS"],
+    });
+    expect(result.priority?.unranked).toEqual(["CODE_4_EPS"]);
+    expect(result.grievance?.ready).toBe(true);
+    if (result.grievance?.ready) expect(result.grievance.variant).toBe("A");
+    expect(result.additionalGrievances).toHaveLength(1);
+    expect(result.additionalGrievances[0]!.code).toBe("CODE_4_EPS");
   });
 });
 

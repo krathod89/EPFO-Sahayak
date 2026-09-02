@@ -93,7 +93,23 @@ function suggestedCategoryFor(kind: VariantKind): SuggestedCategory {
 
 function deadlineCitation(deadline: DeadlineResult | undefined, filingDate: ISODate): string | null {
   if (!deadline || deadline.status !== "MISSED") return null;
-  return `I also note that EPFO's own rule requires settlement within ${deadline.deadlineDays} days of filing (filed ${filingDate}). This deadline was missed by ${deadline.daysLate} day(s). Under EPFO's delay-penalty rule, I am entitled to 12% penal interest on my claim amount for this delay. I request this penalty be applied.`;
+  // basis: "rejection_date" — the citizen told us when EPFO actually rejected the claim, so
+  // "missed by N days" is a confirmed fact, stated as one.
+  if (deadline.basis === "rejection_date") {
+    return `I also note that EPFO's own rule requires settlement within ${deadline.deadlineDays} days of filing (filed ${filingDate}). My claim was rejected after this deadline, missed by ${deadline.daysLate} day(s). Under EPFO's delay-penalty rule, I am entitled to 12% penal interest on my claim amount for this delay. I request this penalty be applied.`;
+  }
+  // basis: "today" — no confirmed rejection date on record. "Today" is only a stand-in for
+  // when EPFO actually decided, so this must not assert a miss as fact in an official
+  // grievance filing — it states the calendar math and asks EPFO to confirm instead.
+  //
+  // 2026-09-02 QA audit (bug #1): this used to say "...without a resolution communicated to
+  // me" as an unconditional fact — but this citation only ever appears in a POST-REJECTION
+  // grievance (see index.ts: `deadline` is never computed for the pre-filing flow), so the
+  // citizen has, by construction, already received a resolution. That phrasing directly
+  // contradicted the document it was embedded in. Fixed to hedge the same way the rest of
+  // the sentence already does — "I have not been able to confirm my exact rejection date" —
+  // rather than deny a rejection the citizen is filing this very grievance about.
+  return `I also note that EPFO's own rule requires settlement within ${deadline.deadlineDays} days of filing (filed ${filingDate}), i.e. by ${deadline.deadlineDate}. As of today, more than ${deadline.deadlineDays} days have passed since filing, and I have not been able to confirm my exact rejection date. If my rejection was issued after ${deadline.deadlineDate}, I am entitled to 12% penal interest on my claim amount under EPFO's delay-penalty rule, and I request EPFO confirm my rejection date and apply this penalty if applicable.`;
 }
 
 function buildVariantContent(request: GrievanceRequest): { variant: GrievanceVariant; subject: string; core: string } | { notApplicable: string } {

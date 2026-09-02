@@ -91,6 +91,104 @@ describe("validatePostRejectionCrossFields", () => {
     expect(errors.some((e) => e.includes("duplicate"))).toBe(true);
   });
 
+  // H11 fix (2026-09-02): rejection_date now feeds the deadline check directly (see
+  // index.ts) — a rejection dated before filing would silently corrupt that math, so it's
+  // caught here rather than left to produce a nonsensical negative day count downstream.
+  it("rejects a rejection_date before filing_date", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_2_DOE"],
+      rejection_date: "2026-07-31", // 1 day before filing_date (2026-08-01)
+    });
+    expect(errors.some((e) => e.includes("rejection_date"))).toBe(true);
+  });
+
+  it("accepts a rejection_date equal to filing_date (same-day rejection)", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_2_DOE"],
+      rejection_date: "2026-08-01",
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("accepts a rejection_date after filing_date", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_2_DOE"],
+      rejection_date: "2026-08-05",
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("is unaffected by rejection_date when omitted", () => {
+    const errors = validatePostRejectionCrossFields({
+      ...base,
+      rejection_codes_selected: ["CODE_2_DOE"],
+    });
+    expect(errors).toHaveLength(0);
+  });
+
+  // Suspected bug #5 (2026-09-02 QA audit): the browser form already rejects an implausible
+  // date (lib/ui/date-validation.ts's dateInputError) — this mirrors that same bound
+  // server-side, since a direct API call bypasses the browser entirely. `today` is injected
+  // for determinism rather than relying on the real clock.
+  describe("date plausibility (server-side mirror of dateInputError)", () => {
+    it("rejects a filing_date before 2001", () => {
+      const errors = validatePostRejectionCrossFields(
+        { ...base, filing_date: "1990-01-01", rejection_codes_selected: ["CODE_2_DOE"] },
+        "2026-09-02"
+      );
+      expect(errors.some((e) => e.includes("filing_date") && e.includes("before 2001"))).toBe(true);
+    });
+
+    it("rejects a filing_date in the future", () => {
+      const errors = validatePostRejectionCrossFields(
+        { ...base, filing_date: "2026-09-03", rejection_codes_selected: ["CODE_2_DOE"] },
+        "2026-09-02"
+      );
+      expect(errors.some((e) => e.includes("filing_date") && e.includes("future"))).toBe(true);
+    });
+
+    it("rejects an implausible rejection_date the same way", () => {
+      const errors = validatePostRejectionCrossFields(
+        { ...base, rejection_codes_selected: ["CODE_2_DOE"], rejection_date: "1999-01-01" },
+        "2026-09-02"
+      );
+      // Also trips the existing rejection_date<filing_date guard — both are legitimate here.
+      expect(errors.some((e) => e.includes("rejection_date") && e.includes("before 2001"))).toBe(true);
+    });
+
+    it("rejects an implausible bank_kyc_submission_date", () => {
+      const errors = validatePostRejectionCrossFields(
+        {
+          ...base,
+          rejection_codes_selected: ["CODE_3_BANK_KYC"],
+          bank_account_type: "individual",
+          bank_kyc_submission_date: "1985-06-15",
+        },
+        "2026-09-02"
+      );
+      expect(errors.some((e) => e.includes("bank_kyc_submission_date") && e.includes("before 2001"))).toBe(true);
+    });
+
+    it("accepts a plausible filing_date with no plausibility error", () => {
+      const errors = validatePostRejectionCrossFields(
+        { ...base, filing_date: "2026-08-01", rejection_codes_selected: ["CODE_2_DOE"] },
+        "2026-09-02"
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it("treats today itself as plausible (boundary)", () => {
+      const errors = validatePostRejectionCrossFields(
+        { ...base, filing_date: "2026-09-02", rejection_codes_selected: ["CODE_2_DOE"] },
+        "2026-09-02"
+      );
+      expect(errors).toHaveLength(0);
+    });
+  });
+
   // Ticket 15 (joint-account rejection): bank_account_type is required whenever CODE_3 is
   // selected, and bank_kyc_submission_date is required too — UNLESS the account is joint,
   // since a joint-account rejection is a hard rejection independent of timing.

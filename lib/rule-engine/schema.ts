@@ -40,6 +40,7 @@ const postRejectionSchema = z.object({
   filing_date: isoDate,
   kyc_complete_at_filing: z.boolean(),
   today_date: isoDate.optional(),
+  rejection_date: isoDate.optional(),
   namedob_kyc_page_status: z.enum(["approved_and_verified", "not_verified", "unsure"]).optional(),
   bank_account_type: z.enum(["individual", "joint", "unsure"]).optional(),
   bank_kyc_submission_date: isoDate.optional(),
@@ -67,8 +68,30 @@ export const diagnoseRequestSchema = z.discriminatedUnion("entry_point", [
 
 export type PostRejectionRequest = z.infer<typeof postRejectionSchema>;
 
-/** Returns a list of plain-language error messages, empty when the cross-field rules all pass. */
-export function validatePostRejectionCrossFields(data: PostRejectionRequest): string[] {
+// EPFO's UAN system postdates 2001 — anything before that is implausible for a PF claim.
+// Same bound `lib/ui/date-validation.ts`'s `dateInputError()` uses for the browser form;
+// duplicated here rather than imported, since that module lives under `lib/ui` (a client-side
+// concern) while this file is the server-side API boundary — small enough logic that keeping
+// the two independent seemed better than crossing that layer for it.
+const MIN_PLAUSIBLE_DATE = "2001-01-01";
+
+/** Plain-language reason a date field is implausible, or null when it's fine. `today` is an
+ * ISO date to compare against — always the server's own clock in production (see call site
+ * below), never a client-supplied override, since the whole point of this check is to catch
+ * a client sending a nonsensical date; letting the client also supply "today" would let it
+ * bypass its own future-date check trivially. */
+function implausibleDateReason(date: string, today: string): string | null {
+  if (date > today) return "is in the future";
+  if (date < MIN_PLAUSIBLE_DATE) return "is before 2001, too early for a PF claim";
+  return null;
+}
+
+/** Returns a list of plain-language error messages, empty when the cross-field rules all
+ * pass. `today` defaults to the server's real current date but can be injected for
+ * deterministic tests (same pattern as lib/rule-engine's own today_date parameters
+ * elsewhere) — see `implausibleDateReason`'s own doc comment for why this must never come
+ * from the request body itself. */
+export function validatePostRejectionCrossFields(data: PostRejectionRequest, today: string = new Date().toISOString().slice(0, 10)): string[] {
   const errors: string[] = [];
   const codes = data.rejection_codes_selected;
 
@@ -121,6 +144,27 @@ export function validatePostRejectionCrossFields(data: PostRejectionRequest): st
   // explanation/fix in the response (diagnose.ts maps directly over the raw code list).
   if (new Set(codes).size !== codes.length) {
     errors.push("rejection_codes_selected must not contain duplicate codes");
+  }
+  // ISO "YYYY-MM-DD" strings compare correctly with plain `<`, so this doesn't need a Date
+  // parse. A rejection dated before filing is impossible and would silently corrupt the
+  // deadline check (it's used as the reference date for H11 — see index.ts).
+  if (data.rejection_date && data.rejection_date < data.filing_date) {
+    errors.push("rejection_date cannot be before filing_date");
+  }
+
+  // Suspected bug #5 (2026-09-02 QA audit): the browser form already rejects an implausible
+  // date via lib/ui/date-validation.ts's dateInputError() (future, or before 2001) — but that
+  // was a client-only check. A direct POST /api/diagnose call (or any future non-Wizard
+  // client) had no server-side equivalent; isoDate above only validates the YYYY-MM-DD shape,
+  // not whether the date itself makes sense. Mirrored here as defense-in-depth.
+  for (const [field, value] of [
+    ["filing_date", data.filing_date],
+    ["rejection_date", data.rejection_date],
+    ["bank_kyc_submission_date", data.bank_kyc_submission_date],
+  ] as const) {
+    if (!value) continue;
+    const reason = implausibleDateReason(value, today);
+    if (reason) errors.push(`${field} ${reason}`);
   }
 
   return errors;

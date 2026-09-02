@@ -4,7 +4,7 @@
 // need to import from the individual rule-engine modules directly.
 
 import { CODE_DEFINITIONS } from "./codes";
-import { checkDeadline, type DeadlineResult } from "./deadline";
+import { checkDeadline, type DeadlineBasis, type DeadlineResult } from "./deadline";
 import { diagnose, hasBranch, type DiagnoseResult, type DiagnosisEntry } from "./diagnose";
 import { buildGrievance, type GrievanceOutput, type StandardKind, type VariantKind } from "./grievance";
 import { prioritize, type PriorityResult } from "./prioritize";
@@ -77,6 +77,17 @@ export interface PostRejectionFlowResult {
   /** Present when the situation warrants an auto-generated grievance. Absent when, e.g.,
    * Code 7's self-check found an issue to fix first (spec Section 3, Code 7). */
   grievance?: GrievanceOutput;
+  /** Ticket 19 (2026-09-02): when 2+ diagnosable codes were selected and more than one
+   * independently warrants a grievance, `grievance` above is only the fix-first one — this
+   * carries every OTHER applicable grievance, in the same fix-first order `priority` already
+   * establishes. Each entry is a genuinely SEPARATE EPFiGMS ticket to file, not text to merge
+   * into one submission — EPFiGMS requires one category per ticket, so there's no "combined"
+   * grievance to build instead. A code whose own grievance is `not_applicable` (e.g. Bank KYC
+   * still within its normal wait band) is excluded entirely rather than included as a dead
+   * slot. Always empty for a single-code selection, or via the exclusive-code/self-check
+   * paths (Codes 6-10) — those are inherently single-issue situations, not a multi-code
+   * combination, so this field only ever grows past `[]` from the diagnosable-codes branch. */
+  additionalGrievances: Array<{ code: DiagnosableCode; grievance: GrievanceOutput }>;
 }
 
 // Return type is the full VariantKind (grievance.ts) rather than a re-declared subset union —
@@ -134,7 +145,16 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
   // entirely rather than computed-but-hidden. Declarative list in types.ts (DEADLINE_SUPPRESSED_CODES)
   // so a future suppressed code doesn't need another hand-added branch here.
   const suppressesDeadline = input.rejection_codes_selected.some((c) => DEADLINE_SUPPRESSED_CODES.includes(c));
-  const deadline = suppressesDeadline ? undefined : checkDeadline(input.filing_date, input.kyc_complete_at_filing, today);
+  // A rejection IS EPFO's act of "settling" the claim, so the deadline is properly checked
+  // against the date EPFO actually rejected — not against "today," which is only when the
+  // citizen happens to be using this tool. Fall back to today only when the citizen doesn't
+  // know/didn't give a rejection date; `basis` travels with the result so the UI and
+  // grievance text can be honest about which one this is (see deadline.ts's DeadlineBasis).
+  const deadlineBasis: DeadlineBasis = input.rejection_date ? "rejection_date" : "today";
+  const deadlineReferenceDate = input.rejection_date ?? today;
+  const deadline = suppressesDeadline
+    ? undefined
+    : checkDeadline(input.filing_date, input.kyc_complete_at_filing, deadlineReferenceDate, deadlineBasis);
 
   const diagnosableSelected = input.rejection_codes_selected.filter(isDiagnosableCode);
   const priority = diagnosableSelected.length > 1 ? prioritize(diagnosableSelected) : undefined;
@@ -143,6 +163,7 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
   const claimId = input.claim_id ?? "";
 
   let grievance: GrievanceOutput | undefined;
+  let additionalGrievances: Array<{ code: DiagnosableCode; grievance: GrievanceOutput }> = [];
 
   // Exclusive code with a fixed grievance kind (Code 6, 8, or 9) — see EXCLUSIVE_CODE_GRIEVANCE_KIND
   // above. Each of Code 8's 3 branches and Code 9's 4 branches all map to the same
@@ -212,24 +233,42 @@ export function runPostRejectionFlow(input: PostRejectionInput): PostRejectionFl
     }
     // Else: only unsure items were found, nothing conclusive — nothing to escalate yet.
   } else if (diagnosableSelected.length > 0) {
-    // MVP simplification (not stated explicitly in the spec, which only shows single-code
-    // grievance examples): when multiple codes are selected, generate one grievance for the
-    // fix-first ("primary") code — the same code the priority check tells the citizen to
-    // fix first. Secondary/unranked codes still get their own diagnosis text, just not a
-    // second grievance.
-    const primary = priority?.ranked[0] ?? diagnosableSelected[0]!;
-    const kind = kindForPrimaryCode(primary, diagnosis, input);
-    grievance = buildGrievance({
-      uan,
-      claim_id: claimId,
-      filing_date: input.filing_date,
-      today_date: today,
-      deadline,
-      kind,
-    });
+    // Ticket 19 (2026-09-02): every diagnosable code that independently warrants a
+    // grievance gets one — not just the fix-first ("primary") code priority.ranked[0]
+    // points to. `grievance` below stays the fix-first one (backward-compatible with the
+    // old single-grievance behavior); every other applicable one lands in
+    // additionalGrievances. A code whose own grievance is not_applicable (e.g. Bank KYC
+    // still within its normal wait band) is skipped when picking the primary — this also
+    // fixes the old bug where such a code winning priority.ranked[0] silently hid a VALID
+    // grievance a lower-priority code would have produced (e.g. Bank KYC Band 1/2 + Name/DOB
+    // portal-sync-bug: the citizen used to see nothing at all). A not_applicable result is
+    // still preserved as a same-code fallback below (not discarded outright) so the existing
+    // single-code "wait, don't file yet" UI path (Wizard.tsx checks `grievance.reason ===
+    // "not_applicable"`) keeps working when NO selected code has anything applicable yet.
+    const orderedCodes = priority ? [...priority.ranked, ...priority.unranked] : diagnosableSelected;
+    const applicable: Array<{ code: DiagnosableCode; grievance: GrievanceOutput }> = [];
+    let firstNotApplicable: GrievanceOutput | undefined;
+    for (const code of orderedCodes) {
+      const kind = kindForPrimaryCode(code, diagnosis, input);
+      const g = buildGrievance({
+        uan,
+        claim_id: claimId,
+        filing_date: input.filing_date,
+        today_date: today,
+        deadline,
+        kind,
+      });
+      if (!g.ready && g.reason === "not_applicable") {
+        firstNotApplicable ??= g;
+        continue;
+      }
+      applicable.push({ code, grievance: g });
+    }
+    grievance = applicable[0]?.grievance ?? firstNotApplicable;
+    additionalGrievances = applicable.slice(1);
   }
 
-  return { diagnosis, priority, deadline, grievance };
+  return { diagnosis, priority, deadline, grievance, additionalGrievances };
 }
 
 export function runPreFilingFlow(input: PreFilingInput): ReadinessResult {
@@ -240,7 +279,7 @@ export * from "./types";
 export type { DiagnosisEntry, EntryBranch } from "./diagnose";
 export { hasBranch } from "./diagnose";
 export type { PriorityResult } from "./prioritize";
-export type { DeadlineResult, DeadlineStatus } from "./deadline";
+export type { DeadlineResult, DeadlineStatus, DeadlineBasis } from "./deadline";
 export type { GrievanceOutput, GrievanceVariant, SuggestedCategory } from "./grievance";
 export { SUGGESTED_CATEGORY_CAVEAT } from "./grievance";
 export type { ReadinessResult, ReadinessOutcome } from "./readiness";
