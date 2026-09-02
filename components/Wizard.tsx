@@ -756,11 +756,21 @@ function DeadlineRuleSources({ tone }: { tone: "red" | "green" | "neutral" }) {
 }
 
 /** Supporting links for each fix's "What to do" step — same discipline as DeadlineRuleSources
- * above (Sourced live 2026-09-02): only linked where a genuine, live, first-party EPFO source
- * was actually found and checked, and only when that source directly matches what the fix text
- * says to do. Not every fix gets one — several (e.g. Code 3 bands 1-2's "contact your bank",
- * Code 8's Form 10D branch) have no live official page behind them and are deliberately left
- * uncited rather than linked to a guess.
+ * above (Sourced live 2026-09-02, re-audited 2026-09-02 against every code/branch/band
+ * permutation `diagnose()` can produce): only linked where a genuine, live, first-party EPFO
+ * source was actually found and checked, and only when that source directly matches what the
+ * fix text says to do. The audit closed two gaps:
+ *   1. A real bug: self-check-routed Code 1 entries (`resolveSelfCheckIssueCode` in diagnose.ts)
+ *      carried no branch `meta`, so `hasBranch()` silently read them as the portal-sync-bug
+ *      branch and cited EPFiGMS under fix text that never mentions a grievance. Fixed by setting
+ *      `meta` there too.
+ *   2. Code 8's Form 10D branch and Code 9's three specific-form branches all "refile"/"file"
+ *      through the same UAN Member e-Sewa portal already cited elsewhere in this file for
+ *      exactly that action — confirmed via secondary sources (see codes.ts's CODE_8_BRANCHES/
+ *      CODE_9_BRANCHES comments) — so their fix copy now names the portal and cites it too.
+ * Not every fix gets a citation — Code 3 bands 1-2's "contact your bank" points the citizen at
+ * their own bank, not an EPFO page, so it stays deliberately uncited rather than linked to a
+ * guess.
  *
  * - EPFiGMS (https://epfigms.gov.in/): EPFO's own grievance portal — linked wherever a fix
  *   explicitly says "file/raise a grievance [through EPFiGMS]".
@@ -792,9 +802,9 @@ function sourcesFor(entry: DiagnosisEntry): SourceLink[] | undefined {
       if (entry.meta && "band" in entry.meta) return entry.meta.band === 3 ? [EPFIGMS] : undefined;
       return [EPFIGMS]; // CODE_3_GENERAL (self-check flow) — fix explicitly says "through EPFiGMS"
     case "CODE_8_ELIGIBILITY":
-      return hasBranch(entry, "over_nine_half_years") ? undefined : [UAN_PORTAL];
+      return [UAN_PORTAL];
     case "CODE_9_WRONG_FORM":
-      return hasBranch(entry, "unsure") ? [UAN_PORTAL] : undefined;
+      return [UAN_PORTAL];
     default:
       return undefined;
   }
