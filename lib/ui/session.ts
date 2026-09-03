@@ -31,3 +31,40 @@ export function getOrCreateSessionId(
     return generateId();
   }
 }
+
+// ─── Analytics opt-out ──────────────────────────────────────────────────────
+// For internal/QA testing against the real deployed app without polluting real citizen
+// analytics. `session_id` only ever exists to correlate/attribute analytics events (see the
+// module comment above) — it's never read by the actual diagnose logic — so an empty session
+// id is a safe, total kill switch: trackClientEvent (lib/ui/mixpanel-client.ts) and
+// trackServerEvent (lib/analytics.ts) BOTH already no-op on a falsy session id, with no
+// changes needed there. Wizard.tsx checks this before ever calling getOrCreateSessionId, so
+// an opted-out browser never generates or persists a real one.
+
+export const NO_TRACK_KEY = "epfo-sahayak-no-track";
+
+/** True once this browser has opted out (see setTrackingDisabled). */
+export function isTrackingDisabled(store: KeyValueStore): boolean {
+  try {
+    return store.getItem(NO_TRACK_KEY) === "1";
+  } catch {
+    return false; // storage unavailable — default to tracked, same fallback posture as getOrCreateSessionId
+  }
+}
+
+/** The subset of the Storage API opting back in needs, beyond KeyValueStore. */
+export interface RemovableKeyValueStore extends KeyValueStore {
+  removeItem(key: string): void;
+}
+
+/** Persists the opt-out choice. Called once, from a `?notrack=1` / `?notrack=0` URL param
+ * (Wizard.tsx) — after that the browser remembers it across reloads with no param needed. */
+export function setTrackingDisabled(store: RemovableKeyValueStore, disabled: boolean): void {
+  try {
+    if (disabled) store.setItem(NO_TRACK_KEY, "1");
+    else store.removeItem(NO_TRACK_KEY);
+  } catch {
+    // Private browsing / storage quota exceeded — the choice just won't persist across
+    // reloads; not worth breaking the flow over.
+  }
+}

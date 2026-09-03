@@ -37,7 +37,7 @@ import type {
 } from "@/lib/rule-engine";
 import { SUGGESTED_CATEGORY_CAVEAT, hasBranch, MUTUALLY_EXCLUSIVE_CODES, DEADLINE_SUPPRESSED_CODES } from "@/lib/rule-engine";
 import { dateInputError } from "@/lib/ui/date-validation";
-import { getOrCreateSessionId } from "@/lib/ui/session";
+import { getOrCreateSessionId, isTrackingDisabled, setTrackingDisabled } from "@/lib/ui/session";
 import { trackClientEvent } from "@/lib/ui/mixpanel-client";
 import { postDiagnose, DiagnoseApiError } from "@/lib/ui/api-client";
 import { buildFeedbackEvent, type FeedbackContext, type FeedbackSentiment } from "@/lib/ui/feedback";
@@ -951,21 +951,34 @@ function GrievanceBlock({
   label,
   grievance,
   sessionId,
+  isPrimary,
 }: {
   label?: string;
   grievance: ReadyGrievance;
   sessionId: string;
+  /** Ticket 19 analytics gap (found in the 2026-09-02 pre-launch Mixpanel audit): without
+   * this, grievance_copied fires identically for the primary card and every additional one,
+   * so there was no way to tell whether a citizen actually copies a second/third grievance or
+   * only ever grabs the first and never comes back for the rest — the exact usage question the
+   * multi-grievance feature exists to answer. */
+  isPrimary: boolean;
 }) {
   return (
     <div className="space-y-4">
       {label && <p className="text-sm font-semibold text-warm-800">{label}</p>}
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Subject line</p>
-        <CopyBlock text={grievance.subject} onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant })} />
+        <CopyBlock
+          text={grievance.subject}
+          onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant, is_primary: isPrimary })}
+        />
       </div>
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-warm-600 mb-2">Grievance body</p>
-        <CopyBlock text={grievance.body} onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant })} />
+        <CopyBlock
+          text={grievance.body}
+          onCopy={() => trackClientEvent(sessionId, "grievance_copied", { variant: grievance.variant, is_primary: isPrimary })}
+        />
       </div>
       <div className="rounded-xl bg-accent-50 border border-accent-100 px-4 py-3.5 space-y-2">
         <p className="text-xs font-semibold text-accent-700">Where to file</p>
@@ -1106,7 +1119,29 @@ export default function Wizard() {
 
   // One id per browser session — ties the API's server-computed analytics events together
   // and doubles as Mixpanel's client-side distinct_id. Generated lazily on first render.
-  const [sessionId] = useState<string>(() => (typeof window === "undefined" ? "" : getOrCreateSessionId(localStorage)));
+  // `?notrack=1` (persisted, so it's a one-time URL visit, not a param needed on every load)
+  // opts this browser out entirely for internal/QA testing against the real deployed app —
+  // an empty session id makes both trackClientEvent and trackServerEvent no-op, so this skips
+  // ever generating/persisting a real one rather than generating one and suppressing it after
+  // the fact. `?notrack=0` opts back in. See lib/ui/session.ts's "Analytics opt-out" section.
+  const [trackingDisabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const notrack = new URLSearchParams(window.location.search).get("notrack");
+    if (notrack !== null) setTrackingDisabled(localStorage, notrack !== "0");
+    return isTrackingDisabled(localStorage);
+  });
+  const [sessionId] = useState<string>(() => (typeof window === "undefined" || trackingDisabled ? "" : getOrCreateSessionId(localStorage)));
+  // `trackingDisabled` above is safe to read during the very first client render even though
+  // it differs from the server's (always-false) value — it never itself appears in rendered
+  // output, only gates trackClientEvent calls and the session id. The visible "testing mode"
+  // badge is different: it's real DOM, so it needs its own state that's deliberately false on
+  // both the server render AND the client's first (pre-hydration) render, only flipping to the
+  // real value in an effect that runs after hydration has already committed — otherwise the
+  // badge's own presence would itself be a hydration mismatch.
+  const [showTrackingBadge, setShowTrackingBadge] = useState(false);
+  useEffect(() => {
+    setShowTrackingBadge(trackingDisabled);
+  }, [trackingDisabled]);
 
   const [postRejectionResult, setPostRejectionResult] = useState<PostRejectionFlowResult | null>(null);
   const [readinessApiResult, setReadinessApiResult] = useState<ReadinessResult | null>(null);
@@ -2218,9 +2253,20 @@ export default function Wizard() {
                 </div>
               )}
 
-              <GrievanceBlock label={readyAdditional.length > 0 ? "File this first" : undefined} grievance={grievance} sessionId={sessionId} />
+              <GrievanceBlock
+                label={readyAdditional.length > 0 ? "File this first" : undefined}
+                grievance={grievance}
+                sessionId={sessionId}
+                isPrimary
+              />
               {readyAdditional.map(({ code, grievance: g }) => (
-                <GrievanceBlock key={code} label={`Then file this too: ${CODE_DEFINITIONS[code].name}`} grievance={g} sessionId={sessionId} />
+                <GrievanceBlock
+                  key={code}
+                  label={`Then file this too: ${CODE_DEFINITIONS[code].name}`}
+                  grievance={g}
+                  sessionId={sessionId}
+                  isPrimary={false}
+                />
               ))}
 
               <button
@@ -2391,19 +2437,31 @@ export default function Wizard() {
   }
 
   return (
-    <AnimatePresence mode="wait" initial={false} custom={direction}>
-      <motion.div
-        key={s.screen}
-        custom={direction}
-        variants={screenVariants}
-        initial="enter"
-        animate="center"
-        exit="exit"
-        transition={{ duration: 0.22, ease: "easeOut" }}
-        className="min-h-full"
-      >
-        {content}
-      </motion.div>
-    </AnimatePresence>
+    <>
+      <AnimatePresence mode="wait" initial={false} custom={direction}>
+        <motion.div
+          key={s.screen}
+          custom={direction}
+          variants={screenVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          className="min-h-full"
+        >
+          {content}
+        </motion.div>
+      </AnimatePresence>
+      {/* Internal/QA testing indicator — only ever visible on a browser that opted out via
+          ?notrack=1 (see the sessionId/trackingDisabled setup above). Deliberately visible
+          rather than silent, so testing on the real deployed app doesn't quietly stay in this
+          mode past when it was meant to. Gated on showTrackingBadge, not trackingDisabled
+          directly — see that state's own comment for why. */}
+      {showTrackingBadge && (
+        <div className="fixed bottom-3 right-3 z-50 rounded-full bg-warm-900/90 text-white text-xs font-medium px-3 py-1.5 shadow-lg pointer-events-none">
+          Analytics off (testing mode)
+        </div>
+      )}
+    </>
   );
 }
